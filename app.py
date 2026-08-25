@@ -155,8 +155,10 @@ section[data-testid="stSidebar"] .stButton > button * {
 }
 [data-testid="stMetricLabel"] {
     color:#527089 !important;
-    white-space:nowrap !important;
+    white-space:normal !important;
     overflow:visible !important;
+    text-overflow:clip !important;
+    line-height:1.15 !important;
 }
 [data-testid="stMetricValue"] {
     color:#0b3d63 !important;
@@ -359,8 +361,17 @@ except Exception as e:
 PAGES = ["Home", "Dashboard", "Data Entry", "Import Excel", "Records", "My Account"]
 
 # Known company sites / power plants. These are merged with database values.
-KNOWN_LOCATIONS = ["HOF", "BBO", "BTO", "BKN", "EME", "MGT"]
-KNOWN_POWER_PLANTS = ["BBO", "BTO", "BKN", "EME", "MGT"]
+# Company power plants/sites shown in the HR training records.
+# They are exposed through the Location selector on the dashboard.
+KNOWN_LOCATIONS = [
+    "HOF", "BBO", "BTO", "BKN", "EME", "MGT", "GNT",
+    "HS1", "HS2", "LKM", "MVB", "ORK", "RDP",
+    "UDW", "VBL", "WMB"
+]
+
+# Kept for Data Entry / Excel compatibility. The Dashboard itself
+# intentionally uses Location as the only site/plant filter.
+KNOWN_POWER_PLANTS = KNOWN_LOCATIONS.copy()
 
 # Keep these years visible in the dashboard even when one year has no rows yet.
 SUPPORTED_YEARS = [2026, 2025, 2024]
@@ -1485,74 +1496,111 @@ def render_dashboard():
         * pd.to_numeric(df["participants_count"], errors="coerce").fillna(0)
     )
 
+    # ------------------------------------------------------------
+    # FILTERS
+    # Location is the only plant/site filter.
+    # ------------------------------------------------------------
     with st.container(border=True):
-        f1, f2, f3, f4, f5, f6 = st.columns([1.15, 1.05, 1, 1.05, 1.05, 1.05])
+        f1, f2, f3, f4, f5 = st.columns([1.35, 1.05, 1.10, 1.15, 1.10])
 
         locations = ["All Locations"] + sorted(
-            set(KNOWN_LOCATIONS + df["location"].dropna().astype(str).str.strip().tolist()),
-            key=str.upper
+            set(
+                KNOWN_LOCATIONS
+                + df["location"].dropna().astype(str).str.strip().tolist()
+            ),
+            key=str.upper,
         )
-        selected_location = f1.selectbox("Location", locations, key="dash_location")
-
-        db_plants = [
-            str(x).strip() for x in df["power_plant"].dropna().astype(str).tolist()
-            if str(x).strip() and str(x).strip() != "Not Specified"
-        ]
-        power_plants = ["All Power Plants"] + sorted(
-            set(KNOWN_POWER_PLANTS + db_plants),
-            key=str.upper
-        )
-        selected_power_plant = f2.selectbox(
-            "Power Plant", power_plants, key="dash_power_plant"
+        selected_location = f1.selectbox(
+            "Location",
+            locations,
+            key="dash_location",
         )
 
+        # Always show 2026, 2025 and 2024, plus any other year
+        # that exists in the database.
         years_in_data = sorted(
             df["from_date"].dropna().dt.year.astype(int).unique().tolist(),
-            reverse=True
+            reverse=True,
         )
         years = []
         for y in SUPPORTED_YEARS + years_in_data:
             if y not in years:
                 years.append(y)
-        selected_year = f3.selectbox(
-            "Year", ["All Years"] + years, key="dash_year"
+
+        selected_year = f2.selectbox(
+            "Year",
+            ["All Years"] + years,
+            key="dash_year",
         )
 
-        quarters = ["All Quarters"] + sorted(
-            df["quarter"].dropna().astype(str).unique().tolist()
+        quarters = ["All Quarters"] + [
+            q for q in ["Q1", "Q2", "Q3", "Q4"]
+            if q in set(df["quarter"].dropna().astype(str))
+        ]
+        selected_quarter = f3.selectbox(
+            "Quarter",
+            quarters,
+            key="dash_quarter",
         )
-        selected_quarter = f4.selectbox("Quarter", quarters, key="dash_quarter")
 
-        types = ["All Types"] + sorted(
+        types_in_data = sorted(
             df["training_type"].dropna().astype(str).unique().tolist()
         )
-        selected_type = f5.selectbox("Training Type", types, key="dash_type")
+        selected_type = f4.selectbox(
+            "Training Type",
+            ["All Types"] + types_in_data,
+            key="dash_type",
+        )
 
-        months = ["All Months"] + list(range(1, 13))
-        selected_month = f6.selectbox("Month", months, key="dash_month")
+        # Display month names rather than 1–12.
+        month_options = {
+            "All Months": None,
+            "January": 1,
+            "February": 2,
+            "March": 3,
+            "April": 4,
+            "May": 5,
+            "June": 6,
+            "July": 7,
+            "August": 8,
+            "September": 9,
+            "October": 10,
+            "November": 11,
+            "December": 12,
+        }
+        selected_month = f5.selectbox(
+            "Month",
+            list(month_options.keys()),
+            key="dash_month",
+        )
 
     filtered = df.copy()
 
     if selected_location != "All Locations":
-        filtered = filtered[filtered["location"].astype(str).str.strip() == selected_location]
-
-    if selected_power_plant != "All Power Plants":
         filtered = filtered[
-            filtered["power_plant"].fillna("Not Specified").astype(str).str.strip()
-            == selected_power_plant
+            filtered["location"].astype(str).str.strip() == selected_location
         ]
 
     if selected_year != "All Years":
-        filtered = filtered[filtered["from_date"].dt.year == int(selected_year)]
+        filtered = filtered[
+            filtered["from_date"].dt.year == int(selected_year)
+        ]
 
     if selected_quarter != "All Quarters":
-        filtered = filtered[filtered["quarter"] == selected_quarter]
+        filtered = filtered[
+            filtered["quarter"] == selected_quarter
+        ]
 
     if selected_type != "All Types":
-        filtered = filtered[filtered["training_type"] == selected_type]
+        filtered = filtered[
+            filtered["training_type"] == selected_type
+        ]
 
-    if selected_month != "All Months":
-        filtered = filtered[filtered["from_date"].dt.month == int(selected_month)]
+    month_number = month_options[selected_month]
+    if month_number is not None:
+        filtered = filtered[
+            filtered["from_date"].dt.month == int(month_number)
+        ]
 
     if filtered.empty:
         st.warning("No records match the selected filters.")
@@ -1562,40 +1610,83 @@ def render_dashboard():
     programmes = int(len(filtered))
     workers = float(filtered["participants_count"].sum())
     total_cost = float(filtered["training_cost"].sum())
-    avg_hours_per_programme = total_hours / programmes if programmes else 0
-    avg_hours_per_worker = total_hours / workers if workers else 0
+    avg_hours_per_programme = (
+        total_hours / programmes if programmes else 0
+    )
+    avg_hours_per_worker = (
+        total_hours / workers if workers else 0
+    )
 
+    # ------------------------------------------------------------
+    # KPI CARDS
+    # Extra width for Avg. Hours / Programme and Training Cost.
+    # ------------------------------------------------------------
     st.write("")
-    # Extra width for Training Cost prevents the value from being shortened with "...".
-    k = st.columns([1, 1, 1.15, 1.10, 1.55, 1])
+    k = st.columns([1.00, 1.00, 1.12, 1.42, 1.45, 1.00])
 
     k[0].metric("Training Programmes", f"{programmes:,}")
     k[1].metric("Workers Attended", f"{workers:,.0f}")
     k[2].metric("Total Training Hours", f"{total_hours:,.1f}")
-    k[3].metric("Avg. Hours / Programme", f"{avg_hours_per_programme:,.1f}")
+    k[3].metric(
+        "Avg. Hours / Programme",
+        f"{avg_hours_per_programme:,.1f}",
+    )
     k[4].metric("Training Cost", f"Rs. {total_cost:,.0f}")
     k[5].metric("Hours / Worker", f"{avg_hours_per_worker:,.1f}")
 
     st.write("")
+
+    # ------------------------------------------------------------
+    # CHARTS
+    # Monthly chart uses month names while retaining chronological
+    # ordering.
+    # ------------------------------------------------------------
     c1, c2 = st.columns(2)
 
     with c1:
         st.subheader("Monthly Training Hours")
+
         monthly = (
-            filtered.assign(month=filtered["from_date"].dt.to_period("M").astype(str))
-            .groupby("month", as_index=False)["calculated_total_hours"]
+            filtered.assign(
+                month_num=filtered["from_date"].dt.month,
+                month_name=filtered["from_date"].dt.month_name(),
+                year=filtered["from_date"].dt.year,
+            )
+            .groupby(
+                ["year", "month_num", "month_name"],
+                as_index=False,
+            )["calculated_total_hours"]
             .sum()
-            .sort_values("month")
-            .set_index("month")
+            .sort_values(["year", "month_num"])
         )
-        monthly.columns = ["Total Training Hours"]
-        st.line_chart(monthly, use_container_width=True)
+
+        if not monthly.empty:
+            monthly["Month"] = monthly.apply(
+                lambda r: (
+                    f"{r['month_name']} {int(r['year'])}"
+                    if filtered["from_date"].dt.year.nunique() > 1
+                    else r["month_name"]
+                ),
+                axis=1,
+            )
+            monthly_chart = monthly.set_index("Month")[
+                ["calculated_total_hours"]
+            ]
+            monthly_chart.columns = ["Total Training Hours"]
+            st.line_chart(
+                monthly_chart,
+                use_container_width=True,
+            )
+        else:
+            st.info("No monthly training data available.")
 
     with c2:
         st.subheader("Training Hours by Type")
         by_type = (
             filtered.groupby("training_type")["calculated_total_hours"]
-            .sum().sort_values(ascending=False).to_frame("Training Hours")
+            .sum()
+            .sort_values(ascending=False)
+            .to_frame("Training Hours")
         )
         st.bar_chart(by_type, use_container_width=True)
 
@@ -1605,7 +1696,8 @@ def render_dashboard():
         st.subheader("Programmes by Quarter")
         by_q = (
             filtered.groupby("quarter")["id"]
-            .count().reindex(["Q1", "Q2", "Q3", "Q4"], fill_value=0)
+            .count()
+            .reindex(["Q1", "Q2", "Q3", "Q4"], fill_value=0)
             .to_frame("Programmes")
         )
         st.bar_chart(by_q, use_container_width=True)
@@ -1614,29 +1706,57 @@ def render_dashboard():
         st.subheader("Training Cost by Type")
         by_cost = (
             filtered.groupby("training_type")["training_cost"]
-            .sum().sort_values(ascending=False).to_frame("Cost")
+            .sum()
+            .sort_values(ascending=False)
+            .to_frame("Cost")
         )
         st.bar_chart(by_cost, use_container_width=True)
 
+    # ------------------------------------------------------------
+    # RECORDS
+    # ------------------------------------------------------------
     st.subheader("Training Records")
+
     display = filtered.copy()
     display["from_date"] = display["from_date"].dt.strftime("%Y-%m-%d")
     display["to_date"] = display["to_date"].dt.strftime("%Y-%m-%d")
     display["Total Training Hours"] = display["calculated_total_hours"]
+
     display = display[
         [
-            "programme_name", "from_date", "to_date", "quarter",
-            "training_type", "location", "power_plant",
-            "training_hours", "participants_count",
-            "Total Training Hours", "training_cost"
+            "programme_name",
+            "from_date",
+            "to_date",
+            "quarter",
+            "training_type",
+            "location",
+            "power_plant",
+            "training_hours",
+            "participants_count",
+            "Total Training Hours",
+            "training_cost",
         ]
     ]
+
     display.columns = [
-        "Programme", "From Date", "To Date", "Quarter", "Type",
-        "Location", "Power Plant", "Hours / Worker", "Workers",
-        "Total Training Hours", "Training Cost (Rs.)"
+        "Programme",
+        "From Date",
+        "To Date",
+        "Quarter",
+        "Type",
+        "Location",
+        "Power Plant",
+        "Hours / Worker",
+        "Workers",
+        "Total Training Hours",
+        "Training Cost (Rs.)",
     ]
-    st.dataframe(display, use_container_width=True, hide_index=True)
+
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+    )
 
     csv = display.to_csv(index=False).encode("utf-8")
     st.download_button(
@@ -1644,8 +1764,9 @@ def render_dashboard():
         csv,
         "training_dashboard.csv",
         "text/csv",
-        use_container_width=True
+        use_container_width=True,
     )
+
 
 def render_records():
     user = require_user()

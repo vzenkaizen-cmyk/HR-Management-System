@@ -153,8 +153,24 @@ section[data-testid="stSidebar"] .stButton > button * {
     background:#fff !important; border:1px solid #d7e5ef !important;
     border-radius:13px !important; padding:14px !important;
 }
-[data-testid="stMetricLabel"] { color:#527089 !important; }
-[data-testid="stMetricValue"] { color:#0b3d63 !important; }
+[data-testid="stMetricLabel"] {
+    color:#527089 !important;
+    white-space:nowrap !important;
+    overflow:visible !important;
+}
+[data-testid="stMetricValue"] {
+    color:#0b3d63 !important;
+    font-size:27px !important;
+    line-height:1.15 !important;
+    white-space:nowrap !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+}
+[data-testid="stMetricValue"] > div {
+    white-space:nowrap !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+}
 
 /* File uploader */
 section[data-testid="stFileUploaderDropzone"] {
@@ -195,13 +211,7 @@ section[data-testid="stFileUploaderDropzone"] button * {
 # ============================================================
 
 def ensure_training_schema():
-    """Repair/upgrade the existing PostgreSQL training_records table safely.
-
-    The deployed database may have been created by an older version of the app.
-    CREATE TABLE IF NOT EXISTS does not change an existing table, so the app must
-    explicitly add/rename missing columns before dashboard/import queries run.
-    Existing data is preserved.
-    """
+    """Create/upgrade the training table without deleting existing data."""
     migration_sql = r"""
     CREATE TABLE IF NOT EXISTS public.training_records (
         id BIGSERIAL PRIMARY KEY,
@@ -211,6 +221,7 @@ def ensure_training_schema():
         quarter VARCHAR(10),
         training_type VARCHAR(100),
         location VARCHAR(255),
+        power_plant VARCHAR(255),
         participant_names TEXT,
         training_cost NUMERIC(14,2) DEFAULT 0,
         training_hours NUMERIC(12,2) DEFAULT 0,
@@ -222,7 +233,6 @@ def ensure_training_schema():
 
     DO $$
     BEGIN
-        -- Programme
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='programme_name') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='program_name') THEN
                 ALTER TABLE public.training_records RENAME COLUMN program_name TO programme_name;
@@ -233,7 +243,6 @@ def ensure_training_schema():
             END IF;
         END IF;
 
-        -- Dates
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='from_date') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='start_date') THEN
                 ALTER TABLE public.training_records RENAME COLUMN start_date TO from_date;
@@ -241,6 +250,7 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN from_date DATE;
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='to_date') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='end_date') THEN
                 ALTER TABLE public.training_records RENAME COLUMN end_date TO to_date;
@@ -249,7 +259,6 @@ def ensure_training_schema():
             END IF;
         END IF;
 
-        -- Classification
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='quarter') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='q') THEN
                 ALTER TABLE public.training_records RENAME COLUMN q TO quarter;
@@ -257,6 +266,7 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN quarter VARCHAR(10);
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_type') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='type') THEN
                 ALTER TABLE public.training_records RENAME COLUMN type TO training_type;
@@ -264,6 +274,7 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN training_type VARCHAR(100);
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='location') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='loc') THEN
                 ALTER TABLE public.training_records RENAME COLUMN loc TO location;
@@ -272,7 +283,11 @@ def ensure_training_schema():
             END IF;
         END IF;
 
-        -- Participants
+        -- New Power Plant field. Existing records are preserved.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='power_plant') THEN
+            ALTER TABLE public.training_records ADD COLUMN power_plant VARCHAR(255);
+        END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participant_names') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='names_of_participants') THEN
                 ALTER TABLE public.training_records RENAME COLUMN names_of_participants TO participant_names;
@@ -280,6 +295,7 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN participant_names TEXT;
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participants_count') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='no_of_people_attended') THEN
                 ALTER TABLE public.training_records RENAME COLUMN no_of_people_attended TO participants_count;
@@ -290,7 +306,6 @@ def ensure_training_schema():
             END IF;
         END IF;
 
-        -- Hours and cost
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_hours') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='hours') THEN
                 ALTER TABLE public.training_records RENAME COLUMN hours TO training_hours;
@@ -298,6 +313,7 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN training_hours NUMERIC(12,2) DEFAULT 0;
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_cost') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='cost') THEN
                 ALTER TABLE public.training_records RENAME COLUMN cost TO training_cost;
@@ -305,19 +321,19 @@ def ensure_training_schema():
                 ALTER TABLE public.training_records ADD COLUMN training_cost NUMERIC(14,2) DEFAULT 0;
             END IF;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='total_hours') THEN
             ALTER TABLE public.training_records ADD COLUMN total_hours NUMERIC(14,2) DEFAULT 0;
         END IF;
 
-        -- Audit columns
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_by') THEN
             ALTER TABLE public.training_records ADD COLUMN created_by BIGINT;
         END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_at') THEN
             ALTER TABLE public.training_records ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
         END IF;
 
-        -- Make the calculated value authoritative for existing rows.
         UPDATE public.training_records
         SET total_hours = COALESCE(training_hours,0) * COALESCE(participants_count,0)
         WHERE total_hours IS NULL
@@ -341,6 +357,13 @@ except Exception as e:
 # ============================================================
 
 PAGES = ["Home", "Dashboard", "Data Entry", "Import Excel", "Records", "My Account"]
+
+# Known company sites / power plants. These are merged with database values.
+KNOWN_LOCATIONS = ["HOF", "BBO", "BTO", "BKN", "EME", "MGT"]
+KNOWN_POWER_PLANTS = ["BBO", "BTO", "BKN", "EME", "MGT"]
+
+# Keep these years visible in the dashboard even when one year has no rows yet.
+SUPPORTED_YEARS = [2026, 2025, 2024]
 
 if "hr_page" not in st.session_state:
     st.session_state.hr_page = "Home"
@@ -399,6 +422,7 @@ SELECT
     quarter,
     training_type,
     location,
+    power_plant,
     participant_names,
     training_cost,
     training_hours,
@@ -417,6 +441,12 @@ def get_training_records():
 
     if df.empty:
         return df
+
+    if "power_plant" not in df.columns:
+        df["power_plant"] = "Not Specified"
+    else:
+        df["power_plant"] = df["power_plant"].fillna("Not Specified").astype(str).str.strip()
+        df.loc[df["power_plant"] == "", "power_plant"] = "Not Specified"
 
     for col in ["from_date", "to_date", "created_at"]:
         if col in df.columns:
@@ -442,13 +472,34 @@ def get_locations():
         ORDER BY TRIM(location)
         """
     )
-    return [str(r["location"]) for r in rows]
+    db_locations = [
+        str(dict(r).get("location")).strip()
+        for r in rows
+        if dict(r).get("location")
+    ]
+    return sorted(set(KNOWN_LOCATIONS + db_locations), key=str.upper)
 
+
+def get_power_plants():
+    rows = run_query(
+        """
+        SELECT DISTINCT TRIM(power_plant) AS power_plant
+        FROM training_records
+        WHERE power_plant IS NOT NULL AND TRIM(power_plant) <> ''
+        ORDER BY TRIM(power_plant)
+        """
+    )
+    db_plants = [
+        str(dict(r).get("power_plant")).strip()
+        for r in rows
+        if dict(r).get("power_plant")
+    ]
+    return sorted(set(KNOWN_POWER_PLANTS + db_plants), key=str.upper)
 
 def get_existing_keys():
     rows = run_query(
         """
-        SELECT programme_name, from_date, location
+        SELECT programme_name, from_date, location, COALESCE(power_plant,'') AS power_plant
         FROM training_records
         """
     )
@@ -457,11 +508,11 @@ def get_existing_keys():
         record = dict(r)
         programme = str(record.get("programme_name") or "").strip().lower()
         location = str(record.get("location") or "").strip().lower()
+        power_plant = str(record.get("power_plant") or "").strip().lower()
         dt = pd.to_datetime(record.get("from_date"), errors="coerce")
         date_key = dt.date() if not pd.isna(dt) else None
-        keys.add((programme, date_key, location))
+        keys.add((programme, date_key, location, power_plant))
     return keys
-
 
 def insert_training_record(
     programme_name,
@@ -470,6 +521,7 @@ def insert_training_record(
     quarter,
     training_type,
     location,
+    power_plant,
     participant_names,
     training_cost,
     training_hours,
@@ -484,6 +536,7 @@ def insert_training_record(
         "quarter": quarter,
         "training_type": training_type,
         "location": location,
+        "power_plant": power_plant,
         "participant_names": participant_names,
         "training_cost": float(training_cost),
         "training_hours": float(training_hours),
@@ -491,20 +544,19 @@ def insert_training_record(
         "total_hours": float(total_hours),
     }
 
-    # First use the existing created_by column if it is available.
     if created_by is not None:
         try:
             run_write(
                 """
                 INSERT INTO training_records (
                     programme_name, from_date, to_date, quarter,
-                    training_type, location, participant_names,
+                    training_type, location, power_plant, participant_names,
                     training_cost, training_hours, participants_count,
                     total_hours, created_by
                 )
                 VALUES (
                     :programme_name, :from_date, :to_date, :quarter,
-                    :training_type, :location, :participant_names,
+                    :training_type, :location, :power_plant, :participant_names,
                     :training_cost, :training_hours, :participants_count,
                     :total_hours, :created_by
                 )
@@ -513,27 +565,23 @@ def insert_training_record(
             )
             return
         except Exception:
-            # Some older deployments do not have created_by. Fall through.
             pass
 
     run_write(
         """
         INSERT INTO training_records (
             programme_name, from_date, to_date, quarter,
-            training_type, location, participant_names,
-            training_cost, training_hours, participants_count,
-            total_hours
+            training_type, location, power_plant, participant_names,
+            training_cost, training_hours, participants_count, total_hours
         )
         VALUES (
             :programme_name, :from_date, :to_date, :quarter,
-            :training_type, :location, :participant_names,
-            :training_cost, :training_hours, :participants_count,
-            :total_hours
+            :training_type, :location, :power_plant, :participant_names,
+            :training_cost, :training_hours, :participants_count, :total_hours
         )
         """,
         params,
     )
-
 
 def update_training_record(
     record_id,
@@ -543,6 +591,7 @@ def update_training_record(
     quarter,
     training_type,
     location,
+    power_plant,
     participant_names,
     training_cost,
     training_hours,
@@ -559,6 +608,7 @@ def update_training_record(
             quarter = :quarter,
             training_type = :training_type,
             location = :location,
+            power_plant = :power_plant,
             participant_names = :participant_names,
             training_cost = :training_cost,
             training_hours = :training_hours,
@@ -574,6 +624,7 @@ def update_training_record(
             "quarter": quarter,
             "training_type": training_type,
             "location": location,
+            "power_plant": power_plant,
             "participant_names": participant_names,
             "training_cost": float(training_cost),
             "training_hours": float(training_hours),
@@ -581,7 +632,6 @@ def update_training_record(
             "total_hours": total_hours,
         },
     )
-
 
 def delete_training_record(record_id):
     run_write("DELETE FROM training_records WHERE id = :record_id", {"record_id": int(record_id)})
@@ -598,7 +648,8 @@ COLUMN_ALIASES = {
     "quarter": ["q", "quarter"],
     "training_type": ["t/s", "type", "training type"],
     "participant_names": ["names of the participants", "participant names", "participants"],
-    "location": ["location", "loc"],
+    "location": ["location", "loc", "site"],
+    "power_plant": ["power plant", "powerplant", "plant", "plant name"],
     "training_cost": ["training cost", "cost"],
     "training_hours": ["training hours", "hours"],
     "participants_count": ["no of people attended", "no of participants", "participants count", "number of people attended"],
@@ -703,9 +754,8 @@ def parse_number(value, default=0.0):
 
 
 def infer_nearby_year(values, index, fallback_year=2026):
-    # Search nearby rows for a full year. This handles entries such as
-    # "14/07, 15/07" where Excel omitted the year.
-    for distance in range(0, 12):
+    """Find the nearest explicit year in the date column."""
+    for distance in range(0, 25):
         for candidate in [index - distance, index + distance]:
             if candidate < 0 or candidate >= len(values):
                 continue
@@ -722,7 +772,6 @@ def infer_nearby_year(values, index, fallback_year=2026):
 def parse_date_value(value, default_year=2026):
     if value is None or pd.isna(value):
         return None
-
     if isinstance(value, pd.Timestamp):
         return value.date()
     if isinstance(value, datetime):
@@ -734,26 +783,25 @@ def parse_date_value(value, default_year=2026):
     if not text or text.lower() in {"nan", "nat", "none"}:
         return None
 
-    # Clean obvious typing mistakes such as 14t/01/2026.
     cleaned = re.sub(r"[A-Za-z]+", "", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
-    # Excel-like datetime text.
-    if re.match(r"^20\d{2}-\d{2}-\d{2}", cleaned):
-        dt = pd.to_datetime(cleaned, errors="coerce")
-        return None if pd.isna(dt) else dt.date()
+    iso = re.match(r"^(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", cleaned)
+    if iso:
+        y, m, d = map(int, iso.groups())
+        try:
+            return date(y, m, d)
+        except ValueError:
+            return None
 
-    # Explicit full date: dd/mm/yyyy or d/m/yyyy.
-    # Range stored in one cell, e.g. 24/25/07/2024 means 24–25 July 2024.
     range_full = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})$", cleaned)
     if range_full:
-        d1, d2, mo, y = map(int, range_full.groups())
+        d1, _, mo, y = map(int, range_full.groups())
         try:
             return date(y, mo, d1)
         except ValueError:
             return None
 
-    # Compact typo such as 503/2025 is interpreted as 05/03/2025.
     compact = re.match(r"^(\d{3})[/-](20\d{2})$", cleaned)
     if compact:
         digits, y = compact.groups()
@@ -762,15 +810,14 @@ def parse_date_value(value, default_year=2026):
         except ValueError:
             return None
 
-    m = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](20\d{2})$", cleaned)
-    if m:
-        d, mo, y = map(int, m.groups())
+    full = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](20\d{2})$", cleaned)
+    if full:
+        d, mo, y = map(int, full.groups())
         try:
             return date(y, mo, d)
         except ValueError:
             return None
 
-    # Date with a comma-separated range, e.g. 14/07, 15/07.
     first = re.search(r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?", cleaned)
     if first:
         d, mo = int(first.group(1)), int(first.group(2))
@@ -791,8 +838,11 @@ def parse_date_range(from_value, to_value, default_year=2026):
     text = "" if from_value is None or pd.isna(from_value) else str(from_value).strip()
     if not to_date and text:
         cleaned = re.sub(r"[A-Za-z]+", "", text)
-        # Full range such as 24/25/07/2024.
-        full_range = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})", cleaned)
+
+        full_range = re.search(
+            r"(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})",
+            cleaned
+        )
         if full_range:
             _, d2, mo, y = full_range.groups()
             try:
@@ -801,7 +851,10 @@ def parse_date_range(from_value, to_value, default_year=2026):
                 to_date = None
 
         if not to_date:
-            matches = re.findall(r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?", cleaned)
+            matches = re.findall(
+                r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?",
+                cleaned
+            )
             if len(matches) >= 2:
                 y = int(matches[0][2]) if matches[0][2] else default_year
                 try:
@@ -812,6 +865,77 @@ def parse_date_range(from_value, to_value, default_year=2026):
     if from_date and not to_date:
         to_date = from_date
     return from_date, to_date
+
+
+def transform_import_rows(df):
+    rows = []
+    errors = []
+    raw_dates = df["from_date"].tolist()
+
+    for idx, source in df.iterrows():
+        excel_row = idx + 1
+        try:
+            programme = str(source.get("programme_name") or "").strip()
+            if not programme:
+                raise ValueError("Programme name is empty")
+
+            year = infer_nearby_year(raw_dates, idx, fallback_year=2026)
+            from_date, to_date = parse_date_range(
+                source.get("from_date"),
+                source.get("to_date"),
+                year
+            )
+            if from_date is None:
+                raise ValueError("Invalid From Date")
+
+            location = str(source.get("location") or "").strip()
+            if not location:
+                raise ValueError("Location is empty")
+
+            power_plant = str(source.get("power_plant") or "").strip()
+            if not power_plant:
+                power_plant = "Not Specified"
+
+            training_hours = parse_number(source.get("training_hours"), 0)
+            participants = parse_number(source.get("participants_count"), 0)
+            cost = parse_number(source.get("training_cost"), 0)
+
+            if training_hours <= 0:
+                raise ValueError("Training Hours must be greater than 0")
+
+            participant_text = str(source.get("participant_names") or "").strip()
+            name_count = len([x for x in re.split(r"[,;]", participant_text) if x.strip()])
+
+            if participants <= 0 or abs(participants - round(participants)) > 0.000001:
+                if name_count > 0:
+                    participants = float(name_count)
+                else:
+                    raise ValueError("No. of people attended is invalid")
+            else:
+                participants = float(round(participants))
+
+            total_hours = training_hours * participants
+
+            rows.append(
+                {
+                    "programme_name": programme,
+                    "from_date": from_date,
+                    "to_date": to_date,
+                    "quarter": normalize_quarter(source.get("quarter"), from_date),
+                    "training_type": normalize_training_type(source.get("training_type")),
+                    "participant_names": participant_text,
+                    "location": location,
+                    "power_plant": power_plant,
+                    "training_cost": cost,
+                    "training_hours": training_hours,
+                    "participants_count": participants,
+                    "total_hours": total_hours,
+                }
+            )
+        except Exception as e:
+            errors.append(f"Excel row {excel_row + 4}: {e}")
+
+    return pd.DataFrame(rows), errors
 
 
 def normalize_training_type(value):
@@ -831,76 +955,6 @@ def normalize_quarter(value, from_date):
         return text
     return f"Q{((from_date.month - 1) // 3) + 1}" if from_date else "Q1"
 
-
-def transform_import_rows(df):
-    rows = []
-    errors = []
-    raw_dates = df["from_date"].tolist()
-
-    for idx, source in df.iterrows():
-        excel_row = idx + 1
-        try:
-            programme = str(source.get("programme_name") or "").strip()
-            if not programme:
-                raise ValueError("Programme name is empty")
-
-            year = infer_nearby_year(raw_dates, idx)
-            from_date, to_date = parse_date_range(source.get("from_date"), source.get("to_date"), year)
-            if from_date is None:
-                raise ValueError("Invalid From Date")
-
-            location = str(source.get("location") or "").strip()
-            if not location:
-                raise ValueError("Location is empty")
-
-            training_hours = parse_number(source.get("training_hours"), 0)
-            participants = parse_number(source.get("participants_count"), 0)
-            cost = parse_number(source.get("training_cost"), 0)
-
-            if training_hours <= 0:
-                raise ValueError("Training Hours must be greater than 0")
-
-            participant_text = str(source.get("participant_names") or "").strip()
-            # The workbook contains one non-integer worker count (2.5) and one blank count.
-            # When the participant names are available, use the number of listed people as a
-            # safer whole-number fallback rather than importing an invalid worker count.
-            name_count = len([x for x in re.split(r"[,;]", participant_text) if x.strip()])
-            if participants <= 0 or abs(participants - round(participants)) > 0.000001:
-                if name_count > 0:
-                    participants = float(name_count)
-                else:
-                    raise ValueError("No. of people attended is invalid")
-            else:
-                participants = float(round(participants))
-
-            # BUSINESS RULE — do not trust the Excel Total Hours column.
-            # Always calculate it from hours per worker × workers attended.
-            total_hours = training_hours * participants
-
-            rows.append(
-                {
-                    "programme_name": programme,
-                    "from_date": from_date,
-                    "to_date": to_date,
-                    "quarter": normalize_quarter(source.get("quarter"), from_date),
-                    "training_type": normalize_training_type(source.get("training_type")),
-                    "participant_names": str(source.get("participant_names") or "").strip(),
-                    "location": location,
-                    "training_cost": cost,
-                    "training_hours": training_hours,
-                    "participants_count": participants,
-                    "total_hours": total_hours,
-                }
-            )
-        except Exception as e:
-            errors.append(f"Excel row {excel_row + 4}: {e}")
-
-    return pd.DataFrame(rows), errors
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
 
 def render_sidebar():
     user = get_user()
@@ -1096,29 +1150,80 @@ def render_data_entry():
     )
 
     locations = get_locations()
+    power_plants = get_power_plants()
+
     with st.container(border=True):
         left, right = st.columns(2)
+
         with left:
-            programme = st.text_input("Name of the Programme *", placeholder="e.g. Leadership Development Programme")
+            programme = st.text_input(
+                "Name of the Programme *",
+                placeholder="e.g. Leadership Development Programme"
+            )
             from_date = st.date_input("From Date *", value=date.today())
             to_date = st.date_input("To Date *", value=date.today())
-            training_type = st.selectbox("Type *", ["Technical", "Soft Skill", "Compliance", "Other"])
+            training_type = st.selectbox(
+                "Type *",
+                ["Technical", "Soft Skill", "Compliance", "Other"]
+            )
             quarter = st.selectbox("Quarter *", ["Q1", "Q2", "Q3", "Q4"])
+
         with right:
-            if locations:
-                location_mode = st.selectbox("Location *", ["Select existing location", "+ Add new location"])
-                if location_mode == "+ Add new location":
-                    location = st.text_input("New location name *")
-                else:
-                    location = st.selectbox("Select location *", locations)
+            location_mode = st.selectbox(
+                "Location *",
+                ["Select existing site", "+ Add new site"],
+                key="entry_location_mode",
+            )
+            if location_mode == "+ Add new site":
+                location = st.text_input(
+                    "New site name *",
+                    placeholder="e.g. HOF"
+                )
             else:
-                location = st.text_input("Location *", placeholder="e.g. HOF")
+                location = st.selectbox(
+                    "Select site *",
+                    locations,
+                    key="entry_location",
+                )
 
-            training_hours = st.number_input("Training Hours per Worker *", min_value=0.0, step=0.5, format="%.2f")
-            participants = st.number_input("No. of Workers Attended *", min_value=0, step=1, format="%d")
-            cost = st.number_input("Training Cost (Rs.)", min_value=0.0, step=1000.0, format="%.2f")
+            plant_mode = st.selectbox(
+                "Power Plant",
+                ["No Power Plant / Not Applicable"] + power_plants + ["+ Add new power plant"],
+                key="entry_plant_mode",
+            )
+            if plant_mode == "+ Add new power plant":
+                power_plant = st.text_input(
+                    "New power plant name",
+                    placeholder="e.g. BBO"
+                )
+            elif plant_mode == "No Power Plant / Not Applicable":
+                power_plant = "Not Specified"
+            else:
+                power_plant = plant_mode
 
-        participant_names = st.text_area("Names of the Participants", placeholder="Optional — separate names with commas")
+            training_hours = st.number_input(
+                "Training Hours per Worker *",
+                min_value=0.0,
+                step=0.5,
+                format="%.2f"
+            )
+            participants = st.number_input(
+                "No. of Workers Attended *",
+                min_value=0,
+                step=1,
+                format="%d"
+            )
+            cost = st.number_input(
+                "Training Cost (Rs.)",
+                min_value=0.0,
+                step=1000.0,
+                format="%.2f"
+            )
+
+        participant_names = st.text_area(
+            "Names of the Participants",
+            placeholder="Optional — separate names with commas"
+        )
 
         total_hours = float(training_hours) * float(participants)
         st.markdown(
@@ -1126,16 +1231,22 @@ def render_data_entry():
             unsafe_allow_html=True,
         )
 
-        save = st.button("Save Training Record", type="primary", use_container_width=True)
+        save = st.button(
+            "Save Training Record",
+            type="primary",
+            use_container_width=True
+        )
 
     if save:
         programme = programme.strip()
         location = location.strip()
+        power_plant = power_plant.strip()
+
         if not programme:
             st.error("Please enter the programme name.")
             return
         if not location:
-            st.error("Please enter/select a location.")
+            st.error("Please enter/select a site.")
             return
         if to_date < from_date:
             st.error("To Date cannot be earlier than From Date.")
@@ -1155,6 +1266,7 @@ def render_data_entry():
                 quarter=quarter,
                 training_type=training_type,
                 location=location,
+                power_plant=power_plant,
                 participant_names=participant_names.strip(),
                 training_cost=cost,
                 training_hours=training_hours,
@@ -1169,11 +1281,6 @@ def render_data_entry():
             st.error("Unable to save the training record.")
             with st.expander("Technical details"):
                 st.exception(e)
-
-
-# ============================================================
-# IMPORT EXCEL
-# ============================================================
 
 def render_import_excel():
     user = require_user()
@@ -1191,23 +1298,45 @@ def render_import_excel():
         unsafe_allow_html=True,
     )
 
-    uploaded = st.file_uploader("Choose the Excel file", type=["xlsx", "xls", "csv"], key="training_import_file")
+    uploaded = st.file_uploader(
+        "Choose the Excel file",
+        type=["xlsx", "xls", "csv"],
+        key="training_import_file"
+    )
     if uploaded is None:
-        st.info("Upload HR T & A.xlsx / HR T & A(1).xlsx to continue.")
+        st.info("Upload the HR Training workbook to continue.")
         return
 
     try:
         source_df, header_row = prepare_excel_dataframe(uploaded)
-        st.success(f"File loaded successfully — {len(source_df):,} training rows detected. Header row: {header_row + 1}.")
+        st.success(
+            f"File loaded successfully — {len(source_df):,} training rows detected. "
+            f"Header row: {header_row + 1}."
+        )
 
         cleaned, validation_errors = transform_import_rows(source_df)
 
-        # Data quality summary
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rows detected", f"{len(source_df):,}")
         c2.metric("Valid rows", f"{len(cleaned):,}")
         c3.metric("Rows with issues", f"{len(validation_errors):,}")
-        c4.metric("Calculated Hours", f"{cleaned['total_hours'].sum():,.1f}" if not cleaned.empty else "0.0")
+        c4.metric(
+            "Calculated Hours",
+            f"{cleaned['total_hours'].sum():,.1f}" if not cleaned.empty else "0.0"
+        )
+
+        if not cleaned.empty:
+            detected_years = sorted(
+                pd.to_datetime(cleaned["from_date"], errors="coerce")
+                .dt.year.dropna().astype(int).unique().tolist()
+            )
+            if detected_years:
+                st.info(
+                    "Detected training years in this Excel file: "
+                    + ", ".join(map(str, detected_years))
+                )
+            else:
+                st.warning("No valid training years were detected in this Excel file.")
 
         if validation_errors:
             with st.expander(f"Review {len(validation_errors)} validation issue(s)"):
@@ -1217,7 +1346,6 @@ def render_import_excel():
             st.error("No valid training records were found in this file.")
             return
 
-        # Compare source total-hours with recalculated value where possible.
         if "total_hours" in source_df.columns:
             source_total = pd.to_numeric(source_df["total_hours"], errors="coerce")
             source_hours = pd.to_numeric(source_df["training_hours"], errors="coerce")
@@ -1237,12 +1365,14 @@ def render_import_excel():
         preview = cleaned.copy()
         preview["from_date"] = pd.to_datetime(preview["from_date"]).dt.strftime("%Y-%m-%d")
         preview["to_date"] = pd.to_datetime(preview["to_date"]).dt.strftime("%Y-%m-%d")
+
         st.dataframe(
             preview[
                 [
                     "programme_name", "from_date", "to_date", "quarter",
-                    "training_type", "location", "training_cost",
-                    "training_hours", "participants_count", "total_hours"
+                    "training_type", "location", "power_plant",
+                    "training_cost", "training_hours",
+                    "participants_count", "total_hours"
                 ]
             ],
             use_container_width=True,
@@ -1252,9 +1382,16 @@ def render_import_excel():
 
         st.divider()
         st.subheader("Import into Training Records")
-        st.caption("Existing records with the same programme + From Date + Location are skipped to prevent duplicate imports.")
+        st.caption(
+            "Existing records with the same Programme + From Date + Location + Power Plant "
+            "are skipped to prevent duplicate imports."
+        )
 
-        if st.button("Import Excel & Open Dashboard", type="primary", use_container_width=True):
+        if st.button(
+            "Import Excel & Open Dashboard",
+            type="primary",
+            use_container_width=True
+        ):
             existing_keys = get_existing_keys()
             inserted = 0
             skipped = 0
@@ -1265,6 +1402,7 @@ def render_import_excel():
                     str(row["programme_name"]).strip().lower(),
                     row["from_date"],
                     str(row["location"]).strip().lower(),
+                    str(row["power_plant"]).strip().lower(),
                 )
 
                 if key in existing_keys:
@@ -1279,6 +1417,7 @@ def render_import_excel():
                         quarter=row["quarter"],
                         training_type=row["training_type"],
                         location=row["location"],
+                        power_plant=row["power_plant"],
                         participant_names=row["participant_names"],
                         training_cost=row["training_cost"],
                         training_hours=row["training_hours"],
@@ -1297,6 +1436,7 @@ def render_import_excel():
                 "failed": len(failed),
                 "calculated_hours": float(cleaned["total_hours"].sum()),
             }
+
             if failed:
                 st.session_state["last_import_errors"] = failed[:30]
 
@@ -1309,7 +1449,6 @@ def render_import_excel():
                 with st.expander("Import errors"):
                     st.code("\n".join(failed[:30]))
 
-            # Automatically move to the dashboard after the import attempt.
             st.session_state.hr_page = "Dashboard"
             st.rerun()
 
@@ -1317,11 +1456,6 @@ def render_import_excel():
         st.error("The selected Excel file could not be processed.")
         with st.expander("Technical details"):
             st.exception(e)
-
-
-# ============================================================
-# DASHBOARD
-# ============================================================
 
 def render_dashboard():
     require_user()
@@ -1346,36 +1480,77 @@ def render_dashboard():
         st.info("No training records are available. Import the Excel file or add a record from Data Entry.")
         return
 
-    # Always use the business-rule calculation for dashboard totals.
-    df["calculated_total_hours"] = df["training_hours"] * df["participants_count"]
+    df["calculated_total_hours"] = (
+        pd.to_numeric(df["training_hours"], errors="coerce").fillna(0)
+        * pd.to_numeric(df["participants_count"], errors="coerce").fillna(0)
+    )
 
-    # Filters
     with st.container(border=True):
-        f1, f2, f3, f4, f5 = st.columns(5)
-        locations = ["All Locations"] + sorted(df["location"].dropna().astype(str).unique().tolist())
+        f1, f2, f3, f4, f5, f6 = st.columns([1.15, 1.05, 1, 1.05, 1.05, 1.05])
+
+        locations = ["All Locations"] + sorted(
+            set(KNOWN_LOCATIONS + df["location"].dropna().astype(str).str.strip().tolist()),
+            key=str.upper
+        )
         selected_location = f1.selectbox("Location", locations, key="dash_location")
 
-        years = sorted(df["from_date"].dropna().dt.year.astype(int).unique().tolist(), reverse=True)
-        selected_year = f2.selectbox("Year", ["All Years"] + years, key="dash_year")
+        db_plants = [
+            str(x).strip() for x in df["power_plant"].dropna().astype(str).tolist()
+            if str(x).strip() and str(x).strip() != "Not Specified"
+        ]
+        power_plants = ["All Power Plants"] + sorted(
+            set(KNOWN_POWER_PLANTS + db_plants),
+            key=str.upper
+        )
+        selected_power_plant = f2.selectbox(
+            "Power Plant", power_plants, key="dash_power_plant"
+        )
 
-        quarters = ["All Quarters"] + sorted(df["quarter"].dropna().astype(str).unique().tolist())
-        selected_quarter = f3.selectbox("Quarter", quarters, key="dash_quarter")
+        years_in_data = sorted(
+            df["from_date"].dropna().dt.year.astype(int).unique().tolist(),
+            reverse=True
+        )
+        years = []
+        for y in SUPPORTED_YEARS + years_in_data:
+            if y not in years:
+                years.append(y)
+        selected_year = f3.selectbox(
+            "Year", ["All Years"] + years, key="dash_year"
+        )
 
-        types = ["All Types"] + sorted(df["training_type"].dropna().astype(str).unique().tolist())
-        selected_type = f4.selectbox("Training Type", types, key="dash_type")
+        quarters = ["All Quarters"] + sorted(
+            df["quarter"].dropna().astype(str).unique().tolist()
+        )
+        selected_quarter = f4.selectbox("Quarter", quarters, key="dash_quarter")
+
+        types = ["All Types"] + sorted(
+            df["training_type"].dropna().astype(str).unique().tolist()
+        )
+        selected_type = f5.selectbox("Training Type", types, key="dash_type")
 
         months = ["All Months"] + list(range(1, 13))
-        selected_month = f5.selectbox("Month", months, key="dash_month")
+        selected_month = f6.selectbox("Month", months, key="dash_month")
 
     filtered = df.copy()
+
     if selected_location != "All Locations":
-        filtered = filtered[filtered["location"] == selected_location]
+        filtered = filtered[filtered["location"].astype(str).str.strip() == selected_location]
+
+    if selected_power_plant != "All Power Plants":
+        filtered = filtered[
+            filtered["power_plant"].fillna("Not Specified").astype(str).str.strip()
+            == selected_power_plant
+        ]
+
     if selected_year != "All Years":
         filtered = filtered[filtered["from_date"].dt.year == int(selected_year)]
+
     if selected_quarter != "All Quarters":
         filtered = filtered[filtered["quarter"] == selected_quarter]
+
     if selected_type != "All Types":
         filtered = filtered[filtered["training_type"] == selected_type]
+
     if selected_month != "All Months":
         filtered = filtered[filtered["from_date"].dt.month == int(selected_month)]
 
@@ -1391,7 +1566,9 @@ def render_dashboard():
     avg_hours_per_worker = total_hours / workers if workers else 0
 
     st.write("")
-    k = st.columns(6)
+    # Extra width for Training Cost prevents the value from being shortened with "...".
+    k = st.columns([1, 1, 1.15, 1.10, 1.55, 1])
+
     k[0].metric("Training Programmes", f"{programmes:,}")
     k[1].metric("Workers Attended", f"{workers:,.0f}")
     k[2].metric("Total Training Hours", f"{total_hours:,.1f}")
@@ -1423,13 +1600,22 @@ def render_dashboard():
         st.bar_chart(by_type, use_container_width=True)
 
     c3, c4 = st.columns(2)
+
     with c3:
         st.subheader("Programmes by Quarter")
-        by_q = filtered.groupby("quarter")["id"].count().sort_index().to_frame("Programmes")
+        by_q = (
+            filtered.groupby("quarter")["id"]
+            .count().reindex(["Q1", "Q2", "Q3", "Q4"], fill_value=0)
+            .to_frame("Programmes")
+        )
         st.bar_chart(by_q, use_container_width=True)
+
     with c4:
         st.subheader("Training Cost by Type")
-        by_cost = filtered.groupby("training_type")["training_cost"].sum().sort_values(ascending=False).to_frame("Cost")
+        by_cost = (
+            filtered.groupby("training_type")["training_cost"]
+            .sum().sort_values(ascending=False).to_frame("Cost")
+        )
         st.bar_chart(by_cost, use_container_width=True)
 
     st.subheader("Training Records")
@@ -1438,22 +1624,28 @@ def render_dashboard():
     display["to_date"] = display["to_date"].dt.strftime("%Y-%m-%d")
     display["Total Training Hours"] = display["calculated_total_hours"]
     display = display[
-        ["programme_name", "from_date", "to_date", "quarter", "training_type",
-         "location", "training_hours", "participants_count", "Total Training Hours", "training_cost"]
+        [
+            "programme_name", "from_date", "to_date", "quarter",
+            "training_type", "location", "power_plant",
+            "training_hours", "participants_count",
+            "Total Training Hours", "training_cost"
+        ]
     ]
     display.columns = [
-        "Programme", "From Date", "To Date", "Quarter", "Type", "Location",
-        "Hours / Worker", "Workers", "Total Training Hours", "Training Cost (Rs.)"
+        "Programme", "From Date", "To Date", "Quarter", "Type",
+        "Location", "Power Plant", "Hours / Worker", "Workers",
+        "Total Training Hours", "Training Cost (Rs.)"
     ]
     st.dataframe(display, use_container_width=True, hide_index=True)
 
     csv = display.to_csv(index=False).encode("utf-8")
-    st.download_button("Download Dashboard Data (CSV)", csv, "training_dashboard.csv", "text/csv", use_container_width=True)
-
-
-# ============================================================
-# RECORDS
-# ============================================================
+    st.download_button(
+        "Download Dashboard Data (CSV)",
+        csv,
+        "training_dashboard.csv",
+        "text/csv",
+        use_container_width=True
+    )
 
 def render_records():
     user = require_user()
@@ -1463,13 +1655,18 @@ def render_records():
         st.info("No training records available.")
         return
 
-    search = st.text_input("Search programme, location or type", placeholder="Search...")
+    search = st.text_input(
+        "Search programme, location, power plant or type",
+        placeholder="Search..."
+    )
     filtered = df.copy()
+
     if search.strip():
         q = search.strip().lower()
         mask = (
             filtered["programme_name"].astype(str).str.lower().str.contains(q, na=False)
             | filtered["location"].astype(str).str.lower().str.contains(q, na=False)
+            | filtered["power_plant"].astype(str).str.lower().str.contains(q, na=False)
             | filtered["training_type"].astype(str).str.lower().str.contains(q, na=False)
         )
         filtered = filtered[mask]
@@ -1479,12 +1676,17 @@ def render_records():
     display["from_date"] = display["from_date"].dt.strftime("%Y-%m-%d")
     display["to_date"] = display["to_date"].dt.strftime("%Y-%m-%d")
     display = display[
-        ["id", "programme_name", "from_date", "to_date", "quarter", "training_type",
-         "location", "training_hours", "participants_count", "calculated_total_hours", "training_cost"]
+        [
+            "id", "programme_name", "from_date", "to_date", "quarter",
+            "training_type", "location", "power_plant",
+            "training_hours", "participants_count",
+            "calculated_total_hours", "training_cost"
+        ]
     ]
     display.columns = [
-        "ID", "Programme", "From Date", "To Date", "Quarter", "Type", "Location",
-        "Hours / Worker", "Workers", "Total Training Hours", "Cost (Rs.)"
+        "ID", "Programme", "From Date", "To Date", "Quarter", "Type",
+        "Location", "Power Plant", "Hours / Worker", "Workers",
+        "Total Training Hours", "Cost (Rs.)"
     ]
     st.dataframe(display, use_container_width=True, hide_index=True)
 
@@ -1505,26 +1707,111 @@ def render_records():
     with st.expander("Edit selected record"):
         a, b = st.columns(2)
         with a:
-            programme = st.text_input("Programme", value=str(row["programme_name"] or ""), key=f"ep_{selected_id}")
-            from_date = st.date_input("From Date", value=row["from_date"].date(), key=f"ef_{selected_id}")
-            to_date = st.date_input("To Date", value=(row["to_date"].date() if pd.notna(row["to_date"]) else row["from_date"].date()), key=f"et_{selected_id}")
-            quarter = st.selectbox("Quarter", ["Q1","Q2","Q3","Q4"], index=( ["Q1","Q2","Q3","Q4"].index(str(row["quarter"])) if str(row["quarter"]) in ["Q1","Q2","Q3","Q4"] else 0), key=f"eq_{selected_id}")
+            programme = st.text_input(
+                "Programme",
+                value=str(row["programme_name"] or ""),
+                key=f"ep_{selected_id}"
+            )
+            from_date = st.date_input(
+                "From Date",
+                value=row["from_date"].date(),
+                key=f"ef_{selected_id}"
+            )
+            to_date = st.date_input(
+                "To Date",
+                value=(
+                    row["to_date"].date()
+                    if pd.notna(row["to_date"])
+                    else row["from_date"].date()
+                ),
+                key=f"et_{selected_id}"
+            )
+            quarter_options = ["Q1", "Q2", "Q3", "Q4"]
+            quarter = st.selectbox(
+                "Quarter",
+                quarter_options,
+                index=(
+                    quarter_options.index(str(row["quarter"]))
+                    if str(row["quarter"]) in quarter_options else 0
+                ),
+                key=f"eq_{selected_id}"
+            )
+
         with b:
-            types = ["Technical","Soft Skill","Compliance","Other"]
+            types = ["Technical", "Soft Skill", "Compliance", "Other"]
             current_type = str(row["training_type"])
-            training_type = st.selectbox("Type", types, index=(types.index(current_type) if current_type in types else 0), key=f"ety_{selected_id}")
-            location = st.text_input("Location", value=str(row["location"] or ""), key=f"el_{selected_id}")
-            training_hours = st.number_input("Training Hours per Worker", min_value=0.0, value=float(row["training_hours"]), step=0.5, key=f"eh_{selected_id}")
-            participants = st.number_input("Workers Attended", min_value=0, value=int(round(float(row["participants_count"]))), step=1, format="%d", key=f"epeople_{selected_id}")
-        cost = st.number_input("Training Cost (Rs.)", min_value=0.0, value=float(row["training_cost"]), step=1000.0, key=f"ec_{selected_id}")
-        names = st.text_area("Participant Names", value=str(row["participant_names"] or ""), key=f"en_{selected_id}")
+            training_type = st.selectbox(
+                "Type",
+                types,
+                index=(types.index(current_type) if current_type in types else 0),
+                key=f"ety_{selected_id}"
+            )
+
+            existing_locations = get_locations()
+            location = st.selectbox(
+                "Location",
+                existing_locations,
+                index=(
+                    existing_locations.index(str(row["location"]))
+                    if str(row["location"]) in existing_locations else 0
+                ),
+                key=f"el_{selected_id}"
+            )
+
+            existing_plants = ["Not Specified"] + get_power_plants()
+            current_plant = str(row["power_plant"] or "Not Specified")
+            power_plant = st.selectbox(
+                "Power Plant",
+                existing_plants,
+                index=(
+                    existing_plants.index(current_plant)
+                    if current_plant in existing_plants else 0
+                ),
+                key=f"eplant_{selected_id}"
+            )
+
+            training_hours = st.number_input(
+                "Training Hours per Worker",
+                min_value=0.0,
+                value=float(row["training_hours"]),
+                step=0.5,
+                key=f"eh_{selected_id}"
+            )
+            participants = st.number_input(
+                "Workers Attended",
+                min_value=0,
+                value=int(round(float(row["participants_count"]))),
+                step=1,
+                format="%d",
+                key=f"epeople_{selected_id}"
+            )
+
+        cost = st.number_input(
+            "Training Cost (Rs.)",
+            min_value=0.0,
+            value=float(row["training_cost"]),
+            step=1000.0,
+            key=f"ec_{selected_id}"
+        )
+        names = st.text_area(
+            "Participant Names",
+            value=str(row["participant_names"] or ""),
+            key=f"en_{selected_id}"
+        )
 
         total_hours = training_hours * participants
-        st.markdown(f"**Total Training Hours = {training_hours:,.2f} × {participants:,.1f} = {total_hours:,.2f}**")
+        st.markdown(
+            f"**Total Training Hours = {training_hours:,.2f} × {participants:,.1f} = {total_hours:,.2f}**"
+        )
 
         b1, b2 = st.columns(2)
         with b1:
-            if st.button("Save Changes", type="primary", use_container_width=True, key=f"save_{selected_id}"):
+            if st.button(
+                "Save Changes",
+                type="primary",
+                use_container_width=True,
+                key=f"save_{selected_id}"
+            ):
                 if to_date < from_date:
                     st.error("To Date cannot be earlier than From Date.")
                 elif training_hours <= 0 or participants <= 0:
@@ -1532,9 +1819,18 @@ def render_records():
                 else:
                     try:
                         update_training_record(
-                            selected_id, programme.strip(), from_date, to_date, quarter,
-                            training_type, location.strip(), names.strip(), cost,
-                            training_hours, participants,
+                            selected_id,
+                            programme.strip(),
+                            from_date,
+                            to_date,
+                            quarter,
+                            training_type,
+                            location.strip(),
+                            power_plant.strip(),
+                            names.strip(),
+                            cost,
+                            training_hours,
+                            participants,
                         )
                         st.success("Record updated successfully.")
                         st.rerun()
@@ -1542,9 +1838,14 @@ def render_records():
                         st.error("Unable to update record.")
                         with st.expander("Technical details"):
                             st.exception(e)
+
         with b2:
             if str(user.get("role", "user")).lower() == "admin":
-                if st.button("Delete Record", use_container_width=True, key=f"delete_{selected_id}"):
+                if st.button(
+                    "Delete Record",
+                    use_container_width=True,
+                    key=f"delete_{selected_id}"
+                ):
                     try:
                         delete_training_record(selected_id)
                         st.success("Record deleted successfully.")
@@ -1555,11 +1856,6 @@ def render_records():
                             st.exception(e)
             else:
                 st.caption("Delete is available to administrators only.")
-
-
-# ============================================================
-# MY ACCOUNT
-# ============================================================
 
 def render_account():
     user = require_user()

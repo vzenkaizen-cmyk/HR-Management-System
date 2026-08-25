@@ -76,22 +76,21 @@ def _seed_first_admin(engine):
         full_name = app_cfg.get("first_admin_fullname", "System Administrator")
 
         conn.execute(
-            text(
-                """
-                INSERT INTO users (username, email, full_name, password_hash, role)
-                VALUES (:username, :email, :full_name, :password_hash, 'admin')
-                ON CONFLICT (username) DO NOTHING
-                """
-            ),
-            {
-                "username": username,
-                "email": email,
-                "full_name": full_name,
-                "password_hash": hash_password(password),
-            },
-        )
-
-
+    text("""
+        INSERT INTO users
+            (username, email, name, full_name, password_hash, role)
+        VALUES
+            (:username, :email, :name, :full_name, :password_hash, 'admin')
+        ON CONFLICT (username) DO NOTHING
+    """),
+    {
+        "username": "admin",
+        "email": "admin@example.com",
+        "name": "System Administrator",
+        "full_name": "System Administrator",
+        "password_hash": password_hash,
+    },
+)
 def run_query(sql: str, params: dict | None = None):
     """Run a SELECT and return rows as a list of dict-like Row objects."""
     engine = get_engine()

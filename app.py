@@ -194,8 +194,141 @@ section[data-testid="stFileUploaderDropzone"] button * {
 # DATABASE
 # ============================================================
 
+def ensure_training_schema():
+    """Repair/upgrade the existing PostgreSQL training_records table safely.
+
+    The deployed database may have been created by an older version of the app.
+    CREATE TABLE IF NOT EXISTS does not change an existing table, so the app must
+    explicitly add/rename missing columns before dashboard/import queries run.
+    Existing data is preserved.
+    """
+    migration_sql = r"""
+    CREATE TABLE IF NOT EXISTS public.training_records (
+        id BIGSERIAL PRIMARY KEY,
+        programme_name TEXT,
+        from_date DATE,
+        to_date DATE,
+        quarter VARCHAR(10),
+        training_type VARCHAR(100),
+        location VARCHAR(255),
+        participant_names TEXT,
+        training_cost NUMERIC(14,2) DEFAULT 0,
+        training_hours NUMERIC(12,2) DEFAULT 0,
+        participants_count NUMERIC(12,2) DEFAULT 0,
+        total_hours NUMERIC(14,2) DEFAULT 0,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    DO $$
+    BEGIN
+        -- Programme
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='programme_name') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='program_name') THEN
+                ALTER TABLE public.training_records RENAME COLUMN program_name TO programme_name;
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='programme') THEN
+                ALTER TABLE public.training_records RENAME COLUMN programme TO programme_name;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN programme_name TEXT;
+            END IF;
+        END IF;
+
+        -- Dates
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='from_date') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='start_date') THEN
+                ALTER TABLE public.training_records RENAME COLUMN start_date TO from_date;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN from_date DATE;
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='to_date') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='end_date') THEN
+                ALTER TABLE public.training_records RENAME COLUMN end_date TO to_date;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN to_date DATE;
+            END IF;
+        END IF;
+
+        -- Classification
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='quarter') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='q') THEN
+                ALTER TABLE public.training_records RENAME COLUMN q TO quarter;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN quarter VARCHAR(10);
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_type') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='type') THEN
+                ALTER TABLE public.training_records RENAME COLUMN type TO training_type;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN training_type VARCHAR(100);
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='location') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='loc') THEN
+                ALTER TABLE public.training_records RENAME COLUMN loc TO location;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN location VARCHAR(255);
+            END IF;
+        END IF;
+
+        -- Participants
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participant_names') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='names_of_participants') THEN
+                ALTER TABLE public.training_records RENAME COLUMN names_of_participants TO participant_names;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN participant_names TEXT;
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participants_count') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='no_of_people_attended') THEN
+                ALTER TABLE public.training_records RENAME COLUMN no_of_people_attended TO participants_count;
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='no_of_participants') THEN
+                ALTER TABLE public.training_records RENAME COLUMN no_of_participants TO participants_count;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN participants_count NUMERIC(12,2) DEFAULT 0;
+            END IF;
+        END IF;
+
+        -- Hours and cost
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_hours') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='hours') THEN
+                ALTER TABLE public.training_records RENAME COLUMN hours TO training_hours;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN training_hours NUMERIC(12,2) DEFAULT 0;
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_cost') THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='cost') THEN
+                ALTER TABLE public.training_records RENAME COLUMN cost TO training_cost;
+            ELSE
+                ALTER TABLE public.training_records ADD COLUMN training_cost NUMERIC(14,2) DEFAULT 0;
+            END IF;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='total_hours') THEN
+            ALTER TABLE public.training_records ADD COLUMN total_hours NUMERIC(14,2) DEFAULT 0;
+        END IF;
+
+        -- Audit columns
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_by') THEN
+            ALTER TABLE public.training_records ADD COLUMN created_by BIGINT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_at') THEN
+            ALTER TABLE public.training_records ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+
+        -- Make the calculated value authoritative for existing rows.
+        UPDATE public.training_records
+        SET total_hours = COALESCE(training_hours,0) * COALESCE(participants_count,0)
+        WHERE total_hours IS NULL
+           OR total_hours <> COALESCE(training_hours,0) * COALESCE(participants_count,0);
+    END $$;
+    """
+    run_write(migration_sql)
+
 try:
     init_db()
+    ensure_training_schema()
 except Exception as e:
     st.error("Unable to connect to the HR database. Please check your Streamlit Secrets.")
     with st.expander("Technical details"):
@@ -937,7 +1070,7 @@ def render_home():
         total_cost = float(df["training_cost"].sum())
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Programmes", f"{len(df):,}")
-        m2.metric("Workers Attended", f"{total_workers:,.1f}")
+        m2.metric("Workers Attended", f"{total_workers:,.0f}")
         m3.metric("Total Training Hours", f"{total_hours:,.1f}")
         m4.metric("Training Cost", f"Rs. {total_cost:,.0f}")
 
@@ -982,7 +1115,7 @@ def render_data_entry():
                 location = st.text_input("Location *", placeholder="e.g. HOF")
 
             training_hours = st.number_input("Training Hours per Worker *", min_value=0.0, step=0.5, format="%.2f")
-            participants = st.number_input("No. of Workers Attended *", min_value=0.0, step=1.0, format="%.1f")
+            participants = st.number_input("No. of Workers Attended *", min_value=0, step=1, format="%d")
             cost = st.number_input("Training Cost (Rs.)", min_value=0.0, step=1000.0, format="%.2f")
 
         participant_names = st.text_area("Names of the Participants", placeholder="Optional — separate names with commas")
@@ -1260,7 +1393,7 @@ def render_dashboard():
     st.write("")
     k = st.columns(6)
     k[0].metric("Training Programmes", f"{programmes:,}")
-    k[1].metric("Workers Attended", f"{workers:,.1f}")
+    k[1].metric("Workers Attended", f"{workers:,.0f}")
     k[2].metric("Total Training Hours", f"{total_hours:,.1f}")
     k[3].metric("Avg. Hours / Programme", f"{avg_hours_per_programme:,.1f}")
     k[4].metric("Training Cost", f"Rs. {total_cost:,.0f}")
@@ -1382,7 +1515,7 @@ def render_records():
             training_type = st.selectbox("Type", types, index=(types.index(current_type) if current_type in types else 0), key=f"ety_{selected_id}")
             location = st.text_input("Location", value=str(row["location"] or ""), key=f"el_{selected_id}")
             training_hours = st.number_input("Training Hours per Worker", min_value=0.0, value=float(row["training_hours"]), step=0.5, key=f"eh_{selected_id}")
-            participants = st.number_input("Workers Attended", min_value=0.0, value=float(row["participants_count"]), step=1.0, key=f"epeople_{selected_id}")
+            participants = st.number_input("Workers Attended", min_value=0, value=int(round(float(row["participants_count"]))), step=1, format="%d", key=f"epeople_{selected_id}")
         cost = st.number_input("Training Cost (Rs.)", min_value=0.0, value=float(row["training_cost"]), step=1000.0, key=f"ec_{selected_id}")
         names = st.text_area("Participant Names", value=str(row["participant_names"] or ""), key=f"en_{selected_id}")
 

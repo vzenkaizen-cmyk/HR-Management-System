@@ -1622,7 +1622,7 @@ def render_dashboard():
     # Extra width for Avg. Hours / Programme and Training Cost.
     # ------------------------------------------------------------
     st.write("")
-    k = st.columns([1.00, 1.00, 1.12, 1.42, 1.45, 1.00])
+    k = st.columns([1.35, 1.00, 1.12, 1.42, 1.45, 1.00])
 
     k[0].metric("Training Programmes", f"{programmes:,}")
     k[1].metric("Workers Attended", f"{workers:,.0f}")

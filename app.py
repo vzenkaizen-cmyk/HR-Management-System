@@ -1,5 +1,5 @@
-import os
 from pathlib import Path
+import html
 
 import streamlit as st
 
@@ -15,7 +15,7 @@ from auth.auth import (
 
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
@@ -30,30 +30,24 @@ st.set_page_config(
 # CUSTOM CSS
 # ============================================================
 
-def inject_custom_css():
+def inject_css():
 
     st.markdown(
         """
         <style>
 
-        /* ==================================================
-           MAIN APPLICATION BACKGROUND
-           ================================================== */
+        /* =====================================================
+           GLOBAL BACKGROUND
+           ===================================================== */
 
         .stApp {
-            background:
-                linear-gradient(
-                    135deg,
-                    #f8fbff 0%,
-                    #eef6ff 45%,
-                    #e7f1ff 100%
-                ) !important;
+            background: linear-gradient(
+                135deg,
+                #f8fbff 0%,
+                #edf6ff 50%,
+                #e6f1fb 100%
+            ) !important;
         }
-
-
-        /* ==================================================
-           MAIN CONTENT
-           ================================================== */
 
         .main .block-container {
             max-width: 1250px;
@@ -62,266 +56,22 @@ def inject_custom_css():
         }
 
 
-        /* ==================================================
-           TITLE
-           ================================================== */
+        /* =====================================================
+           HIDE STREAMLIT DEFAULT PAGE NAVIGATION
+           ===================================================== */
 
-        .app-title {
-            font-size: 42px;
-            font-weight: 800;
-            color: #083b66 !important;
-            margin-bottom: 8px;
-            letter-spacing: -1px;
-        }
-
-        .app-subtitle {
-            font-size: 18px;
-            color: #46627c !important;
-            margin-bottom: 25px;
+        [data-testid="stSidebarNav"] {
+            display: none !important;
         }
 
 
-        /* ==================================================
-           WELCOME BANNER
-           ================================================== */
+        /* =====================================================
+           HEADER
+           ===================================================== */
 
-        .welcome-box {
-            background:
-                linear-gradient(
-                    135deg,
-                    #0b4778,
-                    #1468a5
-                );
-            border-radius: 18px;
-            padding: 28px 32px;
-            margin-bottom: 30px;
-            box-shadow:
-                0 10px 30px rgba(13, 71, 115, 0.18);
+        header {
+            background: transparent !important;
         }
-
-        .welcome-title {
-            color: white !important;
-            font-size: 27px;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .welcome-text {
-            color: #eaf6ff !important;
-            font-size: 16px;
-        }
-
-
-        /* ==================================================
-           DASHBOARD CARDS
-           ================================================== */
-
-        .dashboard-card {
-            background:
-                linear-gradient(
-                    145deg,
-                    #123f68,
-                    #195d91
-                );
-            border-radius: 18px;
-            padding: 27px;
-            min-height: 190px;
-            box-shadow:
-                0 10px 25px rgba(16, 62, 98, 0.18);
-            border: 1px solid rgba(255,255,255,0.15);
-            margin-bottom: 20px;
-        }
-
-        .dashboard-card-icon {
-            font-size: 30px;
-            margin-bottom: 8px;
-        }
-
-        .dashboard-card-title {
-            color: white !important;
-            font-size: 21px;
-            font-weight: 700;
-            margin-bottom: 10px;
-        }
-
-        .dashboard-card-text {
-            color: #e9f5ff !important;
-            font-size: 15px;
-            line-height: 1.6;
-        }
-
-
-        /* ==================================================
-           AUTH CARD
-           ================================================== */
-
-        .auth-card {
-            background: white;
-            border-radius: 20px;
-            padding: 32px;
-            box-shadow:
-                0 15px 40px rgba(21, 75, 115, 0.15);
-            border: 1px solid #d8e8f5;
-        }
-
-
-        /* ==================================================
-           STREAMLIT BUTTONS
-           ================================================== */
-
-        .stButton > button {
-            border-radius: 10px;
-            border: none;
-            font-weight: 700;
-            min-height: 42px;
-        }
-
-        .stButton > button[kind="primary"] {
-            background: #0d5c91 !important;
-            color: white !important;
-        }
-
-
-        /* ==================================================
-           SIDEBAR
-           ================================================== */
-
-        section[data-testid="stSidebar"] {
-            background:
-                linear-gradient(
-                    180deg,
-                    #082d4c 0%,
-                    #0b416b 100%
-                ) !important;
-        }
-
-        section[data-testid="stSidebar"] * {
-            color: white !important;
-        }
-
-        section[data-testid="stSidebar"] .stButton > button {
-            background: rgba(255,255,255,0.10) !important;
-            color: white !important;
-            border: 1px solid rgba(255,255,255,0.18) !important;
-        }
-
-        section[data-testid="stSidebar"] .stButton > button:hover {
-            background: rgba(255,255,255,0.18) !important;
-        }
-
-
-        /* ==================================================
-           SIDEBAR USER CARD
-           ================================================== */
-
-        .sidebar-user {
-            background: rgba(255,255,255,0.10);
-            border-radius: 14px;
-            padding: 16px;
-            margin-top: 20px;
-            margin-bottom: 15px;
-        }
-
-        .sidebar-user-name {
-            font-size: 17px;
-            font-weight: 700;
-            color: white !important;
-        }
-
-        .sidebar-user-role {
-            font-size: 13px;
-            color: #d8edff !important;
-            margin-top: 4px;
-        }
-
-
-        /* ==================================================
-           DIVIDER
-           ================================================== */
-
-        .blue-divider {
-            height: 2px;
-            background: linear-gradient(
-                90deg,
-                #1a78b5,
-                transparent
-            );
-            margin: 20px 0;
-        }
-
-
-        /* ==================================================
-           DATAFRAME / INPUTS
-           ================================================== */
-
-        div[data-baseweb="input"] {
-            border-radius: 8px;
-        }
-
-        div[data-baseweb="select"] {
-            border-radius: 8px;
-        }
-
-
-        /* ==================================================
-           DARK MODE COMPATIBILITY
-           ================================================== */
-
-        @media (prefers-color-scheme: dark) {
-
-            .stApp {
-                background:
-                    linear-gradient(
-                        135deg,
-                        #111827 0%,
-                        #17263a 50%,
-                        #102b45 100%
-                    ) !important;
-            }
-
-            .app-title {
-                color: #67c7ff !important;
-            }
-
-            .app-subtitle {
-                color: #c7d9e8 !important;
-            }
-
-            .auth-card {
-                background: #182638 !important;
-                border: 1px solid #2e4c66 !important;
-            }
-
-            .welcome-box {
-                background:
-                    linear-gradient(
-                        135deg,
-                        #0b4778,
-                        #1468a5
-                    ) !important;
-            }
-
-            .dashboard-card {
-                background:
-                    linear-gradient(
-                        145deg,
-                        #173f61,
-                        #205f8e
-                    ) !important;
-            }
-
-            label,
-            .stMarkdown,
-            .stText,
-            p {
-                color: #e8f3fb;
-            }
-        }
-
-
-        /* ==================================================
-           HIDE STREAMLIT BRANDING
-           ================================================== */
 
         #MainMenu {
             visibility: hidden;
@@ -331,8 +81,502 @@ def inject_custom_css():
             visibility: hidden;
         }
 
-        header {
+
+        /* =====================================================
+           MAIN TITLE
+           ===================================================== */
+
+        .app-title {
+            color: #073b66 !important;
+            font-size: 42px !important;
+            font-weight: 800 !important;
+            line-height: 1.2 !important;
+            margin-bottom: 8px !important;
+            letter-spacing: -1px;
+        }
+
+        .app-subtitle {
+            color: #315875 !important;
+            font-size: 17px !important;
+            font-weight: 500 !important;
+            margin-bottom: 25px !important;
+        }
+
+
+        /* =====================================================
+           WELCOME BANNER
+           ===================================================== */
+
+        .welcome-box {
+            background: linear-gradient(
+                135deg,
+                #0a4778 0%,
+                #12679e 100%
+            ) !important;
+
+            border-radius: 18px;
+            padding: 28px 32px;
+            margin-bottom: 28px;
+
+            box-shadow:
+                0 10px 28px rgba(7, 59, 102, 0.18);
+        }
+
+        .welcome-title {
+            color: #ffffff !important;
+            font-size: 27px !important;
+            font-weight: 800 !important;
+            margin-bottom: 8px;
+        }
+
+        .welcome-text {
+            color: #f0f8ff !important;
+            font-size: 16px !important;
+            line-height: 1.6 !important;
+        }
+
+
+        /* =====================================================
+           DASHBOARD CARDS
+           ===================================================== */
+
+        .dashboard-card {
+            background: #ffffff !important;
+
+            border: 1px solid #d5e5f2 !important;
+            border-radius: 18px;
+
+            padding: 25px;
+
+            min-height: 190px;
+
+            box-shadow:
+                0 8px 24px rgba(15, 69, 105, 0.10);
+
+            margin-bottom: 12px;
+        }
+
+        .dashboard-card:hover {
+            box-shadow:
+                0 12px 30px rgba(15, 69, 105, 0.17);
+        }
+
+        .dashboard-card-icon {
+            font-size: 32px !important;
+            margin-bottom: 10px;
+        }
+
+        .dashboard-card-title {
+            color: #083b66 !important;
+            font-size: 21px !important;
+            font-weight: 800 !important;
+            margin-bottom: 9px;
+        }
+
+        .dashboard-card-text {
+            color: #405b70 !important;
+            font-size: 15px !important;
+            line-height: 1.6 !important;
+        }
+
+
+        /* =====================================================
+           AUTH CARD
+           ===================================================== */
+
+        .auth-card {
+            background: #ffffff !important;
+
+            border: 1px solid #d5e5f2 !important;
+
+            border-radius: 20px;
+
+            padding: 30px;
+
+            box-shadow:
+                0 15px 40px rgba(21, 75, 115, 0.14);
+        }
+
+
+        /* =====================================================
+           AUTH HEADINGS
+           ===================================================== */
+
+        .auth-card h1,
+        .auth-card h2,
+        .auth-card h3,
+        .auth-card p,
+        .auth-card label {
+            color: #123b59 !important;
+        }
+
+
+        /* =====================================================
+           STREAMLIT TABS
+           ===================================================== */
+
+        button[data-baseweb="tab"] {
+            color: #234e6b !important;
+            font-weight: 700 !important;
+        }
+
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #087ea4 !important;
+        }
+
+
+        /* =====================================================
+           INPUT LABELS
+           ===================================================== */
+
+        .stTextInput label,
+        .stTextArea label,
+        .stSelectbox label,
+        .stNumberInput label {
+            color: #123b59 !important;
+            font-weight: 700 !important;
+        }
+
+
+        /* =====================================================
+           INPUT BOXES
+           ===================================================== */
+
+        div[data-baseweb="input"] {
+            background: #ffffff !important;
+            border: 1px solid #b8cddd !important;
+            border-radius: 9px !important;
+        }
+
+        div[data-baseweb="input"] input {
+            color: #152b3d !important;
+            background: #ffffff !important;
+            -webkit-text-fill-color: #152b3d !important;
+        }
+
+        div[data-baseweb="input"] input::placeholder {
+            color: #71869a !important;
+            opacity: 1 !important;
+        }
+
+
+        /* =====================================================
+           SELECT BOX
+           ===================================================== */
+
+        div[data-baseweb="select"] {
+            background: #ffffff !important;
+            color: #152b3d !important;
+        }
+
+
+        /* =====================================================
+           NORMAL TEXT
+           ===================================================== */
+
+        .stMarkdown,
+        .stMarkdown p,
+        .stCaption,
+        .stCaption p {
+            color: #294a63 !important;
+        }
+
+
+        /* =====================================================
+           PRIMARY BUTTONS
+           ===================================================== */
+
+        .stButton > button {
+            min-height: 43px !important;
+
+            border-radius: 10px !important;
+
+            font-weight: 700 !important;
+
+            border: 1px solid #0a5d91 !important;
+
+            background: #0d5c91 !important;
+
+            color: #ffffff !important;
+
+            box-shadow: none !important;
+        }
+
+        .stButton > button:hover {
+            background: #084c79 !important;
+            border-color: #084c79 !important;
+            color: #ffffff !important;
+        }
+
+
+        /* =====================================================
+           SIDEBAR
+           ===================================================== */
+
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(
+                180deg,
+                #073556 0%,
+                #0a4772 55%,
+                #0b507e 100%
+            ) !important;
+        }
+
+        section[data-testid="stSidebar"] > div {
             background: transparent !important;
+        }
+
+        section[data-testid="stSidebar"] * {
+            color: #ffffff !important;
+        }
+
+
+        /* =====================================================
+           SIDEBAR BRAND
+           ===================================================== */
+
+        .sidebar-brand {
+            text-align: center;
+
+            padding: 12px 5px 18px 5px;
+
+            color: #ffffff !important;
+
+            font-size: 23px;
+
+            font-weight: 800;
+        }
+
+        .sidebar-brand-icon {
+            font-size: 31px;
+            margin-bottom: 5px;
+        }
+
+
+        /* =====================================================
+           SIDEBAR USER
+           ===================================================== */
+
+        .sidebar-user {
+            background: rgba(255,255,255,0.11) !important;
+
+            border: 1px solid rgba(255,255,255,0.14);
+
+            border-radius: 14px;
+
+            padding: 15px;
+
+            margin: 5px 0 18px 0;
+        }
+
+        .sidebar-user-name {
+            color: #ffffff !important;
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .sidebar-user-role {
+            color: #d9efff !important;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+
+        /* =====================================================
+           SIDEBAR NAVIGATION BUTTONS
+           ===================================================== */
+
+        .sidebar-nav-title {
+            color: #a9d7f4 !important;
+
+            font-size: 11px;
+
+            font-weight: 800;
+
+            letter-spacing: 1.3px;
+
+            text-transform: uppercase;
+
+            margin: 12px 0 8px 4px;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button {
+            background: rgba(255,255,255,0.07) !important;
+
+            color: #ffffff !important;
+
+            border: 1px solid rgba(255,255,255,0.10) !important;
+
+            border-radius: 10px !important;
+
+            text-align: left !important;
+
+            justify-content: flex-start !important;
+
+            font-weight: 700 !important;
+
+            margin-bottom: 7px !important;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background: rgba(255,255,255,0.17) !important;
+
+            border-color: rgba(255,255,255,0.25) !important;
+        }
+
+
+        /* =====================================================
+           SIDEBAR DASHBOARD BUTTON
+           ===================================================== */
+
+        .dashboard-nav-button {
+            background: #2b74a8 !important;
+
+            border-radius: 10px;
+
+            padding: 11px 13px;
+
+            margin-bottom: 9px;
+
+            color: #ffffff !important;
+
+            font-weight: 800;
+
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+
+        /* =====================================================
+           METRICS
+           ===================================================== */
+
+        [data-testid="stMetric"] {
+            background: #ffffff !important;
+
+            border: 1px solid #d7e6f1 !important;
+
+            border-radius: 14px;
+
+            padding: 16px;
+
+            box-shadow:
+                0 6px 18px rgba(12, 67, 105, 0.08);
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #527089 !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #0b3d63 !important;
+        }
+
+
+        /* =====================================================
+           DIVIDER
+           ===================================================== */
+
+        .blue-divider {
+            height: 2px;
+
+            background: linear-gradient(
+                90deg,
+                #1b79b5,
+                rgba(27,121,181,0)
+            );
+
+            margin: 22px 0;
+        }
+
+
+        /* =====================================================
+           DARK THEME SUPPORT
+           ===================================================== */
+
+        @media (prefers-color-scheme: dark) {
+
+            .stApp {
+                background: linear-gradient(
+                    135deg,
+                    #101923 0%,
+                    #15283a 50%,
+                    #102c44 100%
+                ) !important;
+            }
+
+            .app-title {
+                color: #69c9ff !important;
+            }
+
+            .app-subtitle {
+                color: #d1e5f3 !important;
+            }
+
+            .auth-card {
+                background: #182735 !important;
+                border-color: #36536a !important;
+            }
+
+            .auth-card h1,
+            .auth-card h2,
+            .auth-card h3,
+            .auth-card p,
+            .auth-card label {
+                color: #eaf6ff !important;
+            }
+
+            button[data-baseweb="tab"] {
+                color: #d6ebf8 !important;
+            }
+
+            .stTextInput label,
+            .stTextArea label,
+            .stSelectbox label,
+            .stNumberInput label {
+                color: #e7f4fb !important;
+            }
+
+            div[data-baseweb="input"] {
+                background: #ffffff !important;
+            }
+
+            div[data-baseweb="input"] input {
+                color: #152b3d !important;
+                -webkit-text-fill-color: #152b3d !important;
+            }
+
+            .stMarkdown,
+            .stMarkdown p,
+            .stCaption,
+            .stCaption p {
+                color: #d9eaf5 !important;
+            }
+
+            .dashboard-card {
+                background: #18364f !important;
+                border-color: #2d5877 !important;
+            }
+
+            .dashboard-card-title {
+                color: #ffffff !important;
+            }
+
+            .dashboard-card-text {
+                color: #e1f1fb !important;
+            }
+
+            [data-testid="stMetric"] {
+                background: #18364f !important;
+                border-color: #2d5877 !important;
+            }
+
+            [data-testid="stMetricLabel"] {
+                color: #c5dcea !important;
+            }
+
+            [data-testid="stMetricValue"] {
+                color: #ffffff !important;
+            }
         }
 
         </style>
@@ -341,11 +585,11 @@ def inject_custom_css():
     )
 
 
-inject_custom_css()
+inject_css()
 
 
 # ============================================================
-# DATABASE INITIALIZATION
+# DATABASE
 # ============================================================
 
 try:
@@ -354,13 +598,11 @@ try:
 
 except Exception as e:
 
-    st.error(
-        "Unable to connect to the HR database."
-    )
+    st.error("Unable to connect to the HR database.")
 
     st.markdown(
         """
-        Please check that your Streamlit secret contains:
+        Make sure your Streamlit Secrets contain:
 
         ```toml
         [postgres]
@@ -369,143 +611,72 @@ except Exception as e:
         """
     )
 
-    with st.expander("Technical error details"):
+    with st.expander("Technical details"):
         st.exception(e)
 
     st.stop()
 
 
 # ============================================================
-# PAGE DISCOVERY
+# FIND PAGES
 # ============================================================
 
-def discover_pages():
+def find_page(keyword):
 
-    pages = []
+    pages_dir = Path(__file__).parent / "pages"
 
-    pages_directory = Path(__file__).parent / "pages"
+    if not pages_dir.exists():
+        return None
 
-    if not pages_directory.exists():
-        return pages
+    keyword = keyword.lower()
 
-    for file in sorted(pages_directory.glob("*.py")):
+    for file in pages_dir.glob("*.py"):
 
-        filename = file.stem
+        filename = file.stem.lower()
 
-        # Ignore special files
-        if filename.startswith("_"):
-            continue
+        if keyword in filename:
+            return str(file)
 
-        # ---------------------------------------------
-        # Convert filename into readable title
-        # ---------------------------------------------
+    return None
 
-        title = filename
 
-        # Remove leading numbers
-        title = title.lstrip("0123456789")
+def get_page_title(filename):
 
-        # Remove leading separators
-        title = title.lstrip("_- ")
+    if not filename:
+        return ""
 
-        # Replace underscores and hyphens
-        title = title.replace("_", " ")
-        title = title.replace("-", " ")
+    name = Path(filename).stem
 
-        title = title.strip()
+    # Remove numbers at beginning
+    name = name.lstrip("0123456789")
 
-        # ---------------------------------------------
-        # Fix common page names
-        # ---------------------------------------------
+    # Remove separators
+    name = name.lstrip("_- ")
 
-        lower_title = title.lower()
+    name = name.replace("_", " ")
+    name = name.replace("-", " ")
 
-        if "dashboard" in lower_title:
-            title = "Dashboard"
+    name = name.strip()
 
-        elif "data entry" in lower_title:
-            title = "Data Entry"
+    lower = name.lower()
 
-        elif "record" in lower_title:
-            title = "Records"
+    if "dashboard" in lower:
+        return "Dashboard"
 
-        elif "account" in lower_title:
-            title = "My Account"
+    if "data" in lower:
+        return "Data Entry"
 
-        elif "training" in lower_title:
-            title = "Training"
+    if "record" in lower:
+        return "Records"
 
-        pages.append(
-            {
-                "path": str(file),
-                "title": title,
-            }
-        )
+    if "account" in lower:
+        return "My Account"
 
-    return pages
+    return name.title()
 
 
 # ============================================================
-# STREAMLIT NAVIGATION
-# ============================================================
-
-def create_navigation():
-
-    discovered_pages = discover_pages()
-
-    navigation = {}
-
-    # Home
-    navigation["Home"] = [
-        st.Page(
-            "app.py",
-            title="Home",
-            icon="🏠",
-            default=True,
-        )
-    ]
-
-    # Existing pages
-    page_items = []
-
-    for page in discovered_pages:
-
-        # Do not add app.py itself
-        if Path(page["path"]).resolve() == Path(__file__).resolve():
-            continue
-
-        icon = "📄"
-
-        title_lower = page["title"].lower()
-
-        if "dashboard" in title_lower:
-            icon = "📊"
-
-        elif "data" in title_lower:
-            icon = "📝"
-
-        elif "record" in title_lower:
-            icon = "📁"
-
-        elif "account" in title_lower:
-            icon = "👤"
-
-        page_items.append(
-            st.Page(
-                page["path"],
-                title=page["title"],
-                icon=icon,
-            )
-        )
-
-    if page_items:
-        navigation["HR Management"] = page_items
-
-    return navigation
-
-
-# ============================================================
-# LOGIN / SIGNUP PAGE
+# LOGIN / SIGNUP
 # ============================================================
 
 def render_login_signup():
@@ -524,18 +695,16 @@ def render_login_signup():
 
     st.write("")
 
-    left, mid, right = st.columns(
-        [1, 1.35, 1]
-    )
+    left, center, right = st.columns([1, 1.3, 1])
 
-    with mid:
+    with center:
 
         st.markdown(
             '<div class="auth-card">',
             unsafe_allow_html=True,
         )
 
-        tab_login, tab_signup = st.tabs(
+        login_tab, signup_tab = st.tabs(
             [
                 "🔐 Log in",
                 "👤 Create account",
@@ -546,14 +715,12 @@ def render_login_signup():
         # LOGIN
         # ====================================================
 
-        with tab_login:
+        with login_tab:
 
-            st.markdown(
-                "### Welcome back"
-            )
+            st.markdown("### Welcome back")
 
             st.caption(
-                "Enter your username/email and password."
+                "Enter your username or email and password."
             )
 
             with st.form("login_form"):
@@ -570,7 +737,7 @@ def render_login_signup():
                 )
 
                 submitted = st.form_submit_button(
-                    "🔐 Log in",
+                    "Log in",
                     use_container_width=True,
                     type="primary",
                 )
@@ -580,7 +747,7 @@ def render_login_signup():
                 if not identifier or not password:
 
                     st.error(
-                        "Please enter both username/email and password."
+                        "Please enter both fields."
                     )
 
                 else:
@@ -589,7 +756,7 @@ def render_login_signup():
 
                         user = authenticate(
                             identifier,
-                            password
+                            password,
                         )
 
                         if user:
@@ -597,7 +764,7 @@ def render_login_signup():
                             login_user(user)
 
                             st.success(
-                                "Login successful!"
+                                "Login successful."
                             )
 
                             st.rerun()
@@ -611,8 +778,7 @@ def render_login_signup():
                     except Exception as e:
 
                         st.error(
-                            "Unable to log in. "
-                            "Please try again."
+                            "Unable to log in."
                         )
 
                         with st.expander(
@@ -624,7 +790,7 @@ def render_login_signup():
         # SIGNUP
         # ====================================================
 
-        with tab_signup:
+        with signup_tab:
 
             st.markdown(
                 "### Create your account"
@@ -644,10 +810,6 @@ def render_login_signup():
                 username = st.text_input(
                     "Username",
                     placeholder="e.g. samoda",
-                    help=(
-                        "Use lowercase letters, numbers, "
-                        "'.' or '_'."
-                    ),
                 )
 
                 email = st.text_input(
@@ -668,7 +830,7 @@ def render_login_signup():
                 )
 
                 submitted = st.form_submit_button(
-                    "👤 Create account",
+                    "Create account",
                     use_container_width=True,
                     type="primary",
                 )
@@ -693,15 +855,13 @@ def render_login_signup():
                         )
 
                         st.success(
-                            "Account created successfully! "
-                            "Please use the Log in tab."
+                            "Account created successfully. "
+                            "Please log in."
                         )
 
                     except ValueError as e:
 
-                        st.error(
-                            str(e)
-                        )
+                        st.error(str(e))
 
                     except Exception as e:
 
@@ -721,7 +881,188 @@ def render_login_signup():
 
 
 # ============================================================
-# HOME DASHBOARD
+# SIDEBAR
+# ============================================================
+
+def render_sidebar():
+
+    user = current_user()
+
+    if not user:
+        return
+
+    full_name = (
+        user.get("full_name")
+        or user.get("name")
+        or user.get("username")
+        or "User"
+    )
+
+    username = user.get(
+        "username",
+        "",
+    )
+
+    role = user.get(
+        "role",
+        "user",
+    )
+
+    dashboard_page = find_page("dashboard")
+    data_page = find_page("data")
+    records_page = find_page("record")
+    account_page = find_page("account")
+
+    with st.sidebar:
+
+        # ----------------------------------------------------
+        # BRAND
+        # ----------------------------------------------------
+
+        st.markdown(
+            """
+            <div class="sidebar-brand">
+
+                <div class="sidebar-brand-icon">
+                    📊
+                </div>
+
+                HR Training Dashboard
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # ----------------------------------------------------
+        # USER
+        # ----------------------------------------------------
+
+        safe_name = html.escape(str(full_name))
+        safe_username = html.escape(str(username))
+        safe_role = html.escape(str(role.title()))
+
+        st.markdown(
+            f"""
+            <div class="sidebar-user">
+
+                <div class="sidebar-user-name">
+                    👤 {safe_name}
+                </div>
+
+                <div class="sidebar-user-role">
+                    @{safe_username} · {safe_role}
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="sidebar-nav-title">Navigation</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ----------------------------------------------------
+        # HOME
+        # ----------------------------------------------------
+
+        if st.button(
+            "🏠   Home",
+            key="nav_home",
+            use_container_width=True,
+        ):
+
+            st.switch_page("app.py")
+
+        # ----------------------------------------------------
+        # DASHBOARD
+        # ----------------------------------------------------
+
+        if dashboard_page:
+
+            if st.button(
+                "📊   Dashboard",
+                key="nav_dashboard",
+                use_container_width=True,
+                type="primary",
+            ):
+
+                st.switch_page(
+                    dashboard_page
+                )
+
+        # ----------------------------------------------------
+        # DATA ENTRY
+        # ----------------------------------------------------
+
+        if data_page:
+
+            if st.button(
+                "📝   Data Entry",
+                key="nav_data",
+                use_container_width=True,
+            ):
+
+                st.switch_page(
+                    data_page
+                )
+
+        # ----------------------------------------------------
+        # RECORDS
+        # ----------------------------------------------------
+
+        if records_page:
+
+            if st.button(
+                "📁   Records",
+                key="nav_records",
+                use_container_width=True,
+            ):
+
+                st.switch_page(
+                    records_page
+                )
+
+        # ----------------------------------------------------
+        # MY ACCOUNT
+        # ----------------------------------------------------
+
+        if account_page:
+
+            if st.button(
+                "👤   My Account",
+                key="nav_account",
+                use_container_width=True,
+            ):
+
+                st.switch_page(
+                    account_page
+                )
+
+        st.markdown(
+            '<div class="blue-divider"></div>',
+            unsafe_allow_html=True,
+        )
+
+        # ----------------------------------------------------
+        # LOGOUT
+        # ----------------------------------------------------
+
+        if st.button(
+            "🚪   Log out",
+            key="nav_logout",
+            use_container_width=True,
+        ):
+
+            logout_user()
+
+            st.rerun()
+
+
+# ============================================================
+# HOME
 # ============================================================
 
 def render_home():
@@ -737,12 +1078,19 @@ def render_home():
 
     role = user.get(
         "role",
-        "user"
+        "user",
     )
 
-    # ========================================================
-    # WELCOME BANNER
-    # ========================================================
+    dashboard_page = find_page("dashboard")
+    data_page = find_page("data")
+    records_page = find_page("record")
+    account_page = find_page("account")
+
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
+
+    safe_name = html.escape(str(full_name))
 
     st.markdown(
         f"""
@@ -753,10 +1101,12 @@ def render_home():
             </div>
 
             <div class="welcome-text">
-                Welcome back, <strong>{full_name}</strong> 👋
+                Welcome back,
+                <strong>{safe_name}</strong> 👋
                 <br>
-                Manage training programmes, participants,
-                records and company-wide training performance.
+                Manage training programmes,
+                participants, records and
+                company-wide training performance.
             </div>
 
         </div>
@@ -764,38 +1114,15 @@ def render_home():
         unsafe_allow_html=True,
     )
 
-    # ========================================================
-    # DASHBOARD CARDS
-    # ========================================================
-
-    pages = discover_pages()
-
-    dashboard_page = None
-    data_page = None
-    records_page = None
-    account_page = None
-
-    for page in pages:
-
-        title = page["title"].lower()
-
-        if "dashboard" in title:
-            dashboard_page = page["path"]
-
-        elif "data" in title:
-            data_page = page["path"]
-
-        elif "record" in title:
-            records_page = page["path"]
-
-        elif "account" in title:
-            account_page = page["path"]
-
-    # ========================================================
-    # CARD 1
-    # ========================================================
+    # --------------------------------------------------------
+    # CARDS
+    # --------------------------------------------------------
 
     col1, col2, col3 = st.columns(3)
+
+    # ========================================================
+    # DASHBOARD
+    # ========================================================
 
     with col1:
 
@@ -808,13 +1135,13 @@ def render_home():
                 </div>
 
                 <div class="dashboard-card-title">
-                    Training Dashboard
+                    Dashboard
                 </div>
 
                 <div class="dashboard-card-text">
                     View company-wide training KPIs,
-                    trends, costs, participation and
-                    training performance.
+                    training hours, programmes,
+                    participants, costs and trends.
                 </div>
 
             </div>
@@ -826,7 +1153,7 @@ def render_home():
 
             if st.button(
                 "Open Dashboard →",
-                key="open_dashboard",
+                key="home_dashboard",
                 use_container_width=True,
                 type="primary",
             ):
@@ -836,7 +1163,7 @@ def render_home():
                 )
 
     # ========================================================
-    # CARD 2
+    # DATA ENTRY
     # ========================================================
 
     with col2:
@@ -854,9 +1181,10 @@ def render_home():
                 </div>
 
                 <div class="dashboard-card-text">
-                    Add new training programmes,
-                    participants, dates, locations,
-                    costs and training hours.
+                    Add training programmes,
+                    participants, dates,
+                    locations, costs and
+                    training hours.
                 </div>
 
             </div>
@@ -868,7 +1196,7 @@ def render_home():
 
             if st.button(
                 "Add Training →",
-                key="open_data",
+                key="home_data",
                 use_container_width=True,
                 type="primary",
             ):
@@ -878,7 +1206,7 @@ def render_home():
                 )
 
     # ========================================================
-    # CARD 3
+    # RECORDS
     # ========================================================
 
     with col3:
@@ -892,12 +1220,13 @@ def render_home():
                 </div>
 
                 <div class="dashboard-card-title">
-                    Training Records
+                    Records
                 </div>
 
                 <div class="dashboard-card-text">
-                    Browse, edit, export and manage
-                    existing training records.
+                    Browse, edit, export and
+                    manage existing training
+                    records.
                 </div>
 
             </div>
@@ -909,7 +1238,7 @@ def render_home():
 
             if st.button(
                 "View Records →",
-                key="open_records",
+                key="home_records",
                 use_container_width=True,
                 type="primary",
             ):
@@ -918,11 +1247,27 @@ def render_home():
                     records_page
                 )
 
-    # ========================================================
-    # USER INFORMATION
-    # ========================================================
+    # --------------------------------------------------------
+    # ACCOUNT
+    # --------------------------------------------------------
 
-    st.write("")
+    if account_page:
+
+        st.write("")
+
+        if st.button(
+            "👤  My Account",
+            key="home_account",
+            use_container_width=True,
+        ):
+
+            st.switch_page(
+                account_page
+            )
+
+    # --------------------------------------------------------
+    # USER INFO
+    # --------------------------------------------------------
 
     st.markdown(
         '<div class="blue-divider"></div>',
@@ -952,181 +1297,16 @@ def render_home():
             role.title(),
         )
 
-    # ========================================================
-    # ACCOUNT BUTTON
-    # ========================================================
-
-    if account_page:
-
-        st.write("")
-
-        if st.button(
-            "👤 Open My Account",
-            use_container_width=True,
-        ):
-
-            st.switch_page(
-                account_page
-            )
-
-    st.caption(
-        "Use the sidebar to navigate between HR Training pages."
-    )
-
 
 # ============================================================
-# SIDEBAR
+# RUN APPLICATION
 # ============================================================
 
-def render_sidebar():
+if is_logged_in():
 
-    user = current_user()
-
-    if not user:
-        return
-
-    full_name = (
-        user.get("full_name")
-        or user.get("name")
-        or user.get("username")
-        or "User"
-    )
-
-    username = user.get(
-        "username",
-        ""
-    )
-
-    role = user.get(
-        "role",
-        "user"
-    )
-
-    with st.sidebar:
-
-        st.markdown(
-            """
-            <div style="
-                text-align:center;
-                padding:10px 0 15px 0;
-                font-size:28px;
-            ">
-                📊
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            """
-            <div style="
-                text-align:center;
-                font-size:20px;
-                font-weight:800;
-                color:white;
-                margin-bottom:20px;
-            ">
-                HR Training
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # User card
-
-        st.markdown(
-            f"""
-            <div class="sidebar-user">
-
-                <div class="sidebar-user-name">
-                    👤 {full_name}
-                </div>
-
-                <div class="sidebar-user-role">
-                    @{username} · {role.title()}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="blue-divider"></div>',
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            "🏠 Home",
-            use_container_width=True,
-        ):
-
-            st.switch_page(
-                "app.py"
-            )
-
-        # ----------------------------------------------
-        # Dynamic page links
-        # ----------------------------------------------
-
-        pages = discover_pages()
-
-        for page in pages:
-
-            page_path = page["path"]
-
-            if Path(page_path).resolve() == Path(__file__).resolve():
-                continue
-
-            title = page["title"]
-            title_lower = title.lower()
-
-            icon = "📄"
-
-            if "dashboard" in title_lower:
-                icon = "📊"
-
-            elif "data" in title_lower:
-                icon = "📝"
-
-            elif "record" in title_lower:
-                icon = "📁"
-
-            elif "account" in title_lower:
-                icon = "👤"
-
-            if st.button(
-                f"{icon} {title}",
-                key=f"sidebar_{page_path}",
-                use_container_width=True,
-            ):
-
-                st.switch_page(
-                    page_path
-                )
-
-        st.write("")
-
-        if st.button(
-            "🚪 Log out",
-            use_container_width=True,
-        ):
-
-            logout_user()
-
-            st.rerun()
-
-
-# ============================================================
-# APPLICATION START
-# ============================================================
-
-if not is_logged_in():
-
-    render_login_signup()
+    render_sidebar()
+    render_home()
 
 else:
 
-    render_sidebar()
-
-    render_home()
+    render_login_signup()

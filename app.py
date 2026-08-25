@@ -26,6 +26,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# The app uses st.navigation + a custom text-only sidebar.
+try:
+    st.set_option("client.showSidebarNavigation", False)
+except Exception:
+    pass
+
 
 # ============================================================
 # GLOBAL LIGHT THEME
@@ -51,6 +57,17 @@ html, body, [data-testid="stAppViewContainer"] {
         #e5f0fa 100%
     ) !important;
     color: #173f5c !important;
+}
+
+:root,
+html {
+    color-scheme: light !important;
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"] {
+    background: #f4f9fd !important;
 }
 
 .main .block-container {
@@ -200,6 +217,42 @@ div[data-baseweb="base-input"] button {
     border-color: #075f82 !important;
 }
 
+/* Dark boxes remain dark, but their text is always readable. */
+.stButton > button:not([kind="primary"]),
+.stDownloadButton > button {
+    background: #13233f !important;
+    color: #ffffff !important;
+    border: 1px solid #13233f !important;
+}
+
+.stButton > button:not([kind="primary"]):hover,
+.stDownloadButton > button:hover {
+    background: #1d355d !important;
+    color: #ffffff !important;
+    border-color: #1d355d !important;
+}
+
+/* Excel dropzone: dark box with white text on the light page. */
+section[data-testid="stFileUploaderDropzone"] {
+    background: #13233f !important;
+    border: 1px solid #2b4168 !important;
+    border-radius: 12px !important;
+}
+
+section[data-testid="stFileUploaderDropzone"] * {
+    color: #ffffff !important;
+}
+
+section[data-testid="stFileUploaderDropzone"] button {
+    background: #ffffff !important;
+    color: #13233f !important;
+    border: 1px solid #d5e2ef !important;
+}
+
+section[data-testid="stFileUploaderDropzone"] small {
+    color: #d9e7f5 !important;
+}
+
 /* =========================================================
    HOME / DASHBOARD CARDS
    ========================================================= */
@@ -282,6 +335,13 @@ div[data-baseweb="base-input"] button {
    ========================================================= */
 
 [data-testid="stAlert"] {
+    color: #173f5c !important;
+    background: #eef6fc !important;
+    border: 1px solid #c8dceb !important;
+}
+
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] div {
     color: #173f5c !important;
 }
 
@@ -378,6 +438,32 @@ section[data-testid="stSidebar"] .stButton > button {
 section[data-testid="stSidebar"] .stButton > button:hover {
     background: rgba(255,255,255,0.18) !important;
     border-color: rgba(255,255,255,0.25) !important;
+}
+
+section[data-testid="stSidebar"] a {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background: rgba(0, 0, 0, 0.22) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 9px !important;
+    padding: 10px 12px !important;
+    margin: 0 0 7px 0 !important;
+    text-decoration: none !important;
+    font-weight: 700 !important;
+}
+
+section[data-testid="stSidebar"] a:hover {
+    background: rgba(255, 255, 255, 0.16) !important;
+    color: #ffffff !important;
+}
+
+section[data-testid="stSidebar"] a[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.30) !important;
 }
 
 .sidebar-divider {
@@ -511,24 +597,17 @@ def find_page(*keywords):
 
 
 def go_to(path):
+    """Switch to a page registered by st.navigation."""
     if not path:
         st.warning("This page is not available yet.")
         return
 
-    # Streamlit navigation is more reliable with a path relative
-    # to the project root.
     try:
         project_root = Path(__file__).parent.resolve()
         target = Path(path).resolve()
-
-        if target == project_root / "app.py":
-            st.switch_page("app.py")
-            return
-
         relative = target.relative_to(project_root)
         st.switch_page(str(relative).replace("\\", "/"))
     except Exception:
-        # Fallback for existing Streamlit page paths.
         try:
             st.switch_page(str(path))
         except Exception:
@@ -810,7 +889,7 @@ def render_login_signup():
             st.write("")
             if st.button(
                 "📥  Import Excel",
-                key="auth_import_login",
+                key="auth_import_signup",
                 use_container_width=True,
             ):
                 st.warning("Please sign in first. Import Excel is available from the Home page.")
@@ -823,7 +902,7 @@ def render_login_signup():
 # ============================================================
 
 def render_sidebar():
-
+    """Shared sidebar shown on every signed-in page."""
     user = get_logged_user()
 
     if not user:
@@ -835,18 +914,10 @@ def render_sidebar():
         or user.get("username")
         or "User"
     )
-
     username = user.get("username", "")
     role = user.get("role", "user")
 
-    dashboard_page = find_page("dashboard")
-    data_page = find_page("data")
-    records_page = find_page("record")
-    account_page = find_page("account")
-    import_page = find_page("import")
-
     with st.sidebar:
-
         st.markdown(
             """
             <div class="sidebar-brand">
@@ -860,12 +931,9 @@ def render_sidebar():
         st.markdown(
             f"""
             <div class="sidebar-user">
-                <div class="sidebar-user-name">
-                    👤 {html.escape(str(full_name))}
-                </div>
+                <div class="sidebar-user-name">{html.escape(str(full_name))}</div>
                 <div class="sidebar-user-role">
-                    @{html.escape(str(username))}
-                    · {html.escape(str(role).title())}
+                    @{html.escape(str(username))} · {html.escape(str(role).title())}
                 </div>
             </div>
             """,
@@ -877,71 +945,28 @@ def render_sidebar():
             unsafe_allow_html=True,
         )
 
-        if st.button(
-            "🏠   Home",
-            key="sidebar_home",
-            use_container_width=True,
-        ):
-            go_to("app.py")
+        nav_items = [
+            ("Home", PAGE_BY_TITLE.get("Home")),
+            ("Dashboard", PAGE_BY_TITLE.get("Dashboard")),
+            ("Data Entry", PAGE_BY_TITLE.get("Data Entry")),
+            ("Import Excel", PAGE_BY_TITLE.get("Import Excel")),
+            ("Records", PAGE_BY_TITLE.get("Records")),
+            ("My Account", PAGE_BY_TITLE.get("My Account")),
+        ]
 
-        if dashboard_page:
-            if st.button(
-                "📊   Dashboard",
-                key="sidebar_dashboard",
-                use_container_width=True,
-            ):
-                go_to(dashboard_page)
+        for label, page in nav_items:
+            if page is not None:
+                st.page_link(
+                    page,
+                    label=label,
+                    icon=None,
+                    use_container_width=True,
+                )
 
-        if data_page:
-            if st.button(
-                "📝   Data Entry",
-                key="sidebar_data",
-                use_container_width=True,
-            ):
-                go_to(data_page)
-
-        # Always show Import Excel in the signed-in navigation.
-        # If an existing import page exists, open it.
-        # Otherwise the Home page contains the built-in uploader.
-        if import_page:
-            if st.button(
-                "📥   Import Excel",
-                key="sidebar_import",
-                use_container_width=True,
-            ):
-                go_to(import_page)
-        else:
-            if st.button(
-                "📥   Import Excel",
-                key="sidebar_import_home",
-                use_container_width=True,
-            ):
-                st.session_state["open_excel_import"] = True
-                go_to("app.py")
-
-        if records_page:
-            if st.button(
-                "📁   Records",
-                key="sidebar_records",
-                use_container_width=True,
-            ):
-                go_to(records_page)
-
-        if account_page:
-            if st.button(
-                "👤   My Account",
-                key="sidebar_account",
-                use_container_width=True,
-            ):
-                go_to(account_page)
-
-        st.markdown(
-            '<div class="sidebar-divider"></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
 
         if st.button(
-            "🚪   Log out",
+            "Log out",
             key="sidebar_logout",
             use_container_width=True,
         ):
@@ -1178,8 +1203,39 @@ def render_home():
 
 
 # ============================================================
-# APPLICATION
+# NAVIGATION / APPLICATION
 # ============================================================
+
+HOME_PAGE = st.Page(
+    render_home,
+    title="Home",
+    icon=None,
+    default=True,
+)
+
+PAGE_BY_TITLE = {"Home": HOME_PAGE}
+NAVIGATION_PAGES = [HOME_PAGE]
+
+for _page_info in discover_pages():
+    _page_path = _page_info["path"]
+
+    if Path(_page_path).resolve() == Path(__file__).resolve():
+        continue
+
+    _title = _page_info["title"]
+    if _title in PAGE_BY_TITLE:
+        continue
+
+    _page = st.Page(
+        _page_path,
+        title=_title,
+        icon=None,
+    )
+    PAGE_BY_TITLE[_title] = _page
+    NAVIGATION_PAGES.append(_page)
+
+# Hide Streamlit's built-in page navigation. The custom sidebar is used.
+pg = st.navigation(NAVIGATION_PAGES, position="hidden")
 
 try:
     logged_in = bool(is_logged_in())
@@ -1188,6 +1244,6 @@ except Exception:
 
 if logged_in or get_logged_user():
     render_sidebar()
-    render_home()
+    pg.run()
 else:
     render_login_signup()

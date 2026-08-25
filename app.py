@@ -582,6 +582,17 @@ def page_title(path):
     return name.title()
 
 
+def discover_pages():
+    """Return existing Streamlit page files with their display titles."""
+    discovered = []
+    for path in page_files():
+        discovered.append({
+            "path": str(path),
+            "title": page_title(path),
+        })
+    return discovered
+
+
 def find_page(*keywords):
     for path in page_files():
         lower = path.stem.lower()

@@ -2,6 +2,7 @@ from pathlib import Path
 import html
 import re
 
+import pandas as pd
 import streamlit as st
 
 from database.db import init_db
@@ -27,16 +28,29 @@ st.set_page_config(
 
 
 # ============================================================
-# CSS
+# GLOBAL LIGHT THEME
 # ============================================================
 
 def inject_css():
     st.markdown(
         """
 <style>
-/* ---------- APP ---------- */
+/* =========================================================
+   FORCE A LIGHT, CONSISTENT THEME
+   ========================================================= */
+
+html, body, [data-testid="stAppViewContainer"] {
+    background: #f4f9fd !important;
+}
+
 .stApp {
-    background: linear-gradient(135deg, #f7fbff 0%, #edf6ff 52%, #e5f0fa 100%) !important;
+    background: linear-gradient(
+        135deg,
+        #f7fbff 0%,
+        #edf6ff 52%,
+        #e5f0fa 100%
+    ) !important;
+    color: #173f5c !important;
 }
 
 .main .block-container {
@@ -45,21 +59,37 @@ def inject_css():
     padding-bottom: 3rem;
 }
 
-/* Hide Streamlit's automatic page list because this app has its own navigation. */
+/* Hide Streamlit's automatic page list.
+   The application has its own navigation. */
 [data-testid="stSidebarNav"] {
     display: none !important;
 }
 
 #MainMenu,
 footer {
-    visibility: hidden;
+    visibility: hidden !important;
 }
 
 header {
     background: transparent !important;
 }
 
-/* ---------- MAIN TITLE ---------- */
+/* =========================================================
+   REMOVE UNWANTED STREAMLIT FORM HINTS / TOOLTIPS
+   ========================================================= */
+
+[data-testid="InputInstructions"],
+div[data-testid="InputInstructions"],
+[data-testid="stTooltipIcon"],
+[data-testid="stTextInput"] [data-testid="InputInstructions"],
+[data-testid="stTextInput"] small {
+    display: none !important;
+}
+
+/* =========================================================
+   PAGE TITLE
+   ========================================================= */
+
 .app-title {
     color: #073b66 !important;
     font-size: 42px !important;
@@ -75,29 +105,10 @@ header {
     margin-bottom: 22px !important;
 }
 
-/* ---------- WELCOME ---------- */
-.welcome-box {
-    background: linear-gradient(135deg, #0a4778 0%, #12699f 100%);
-    border-radius: 18px;
-    padding: 27px 30px;
-    margin: 8px 0 24px 0;
-    box-shadow: 0 10px 28px rgba(7, 59, 102, 0.16);
-}
+/* =========================================================
+   AUTHENTICATION
+   ========================================================= */
 
-.welcome-title {
-    color: #ffffff !important;
-    font-size: 27px !important;
-    font-weight: 800 !important;
-    margin-bottom: 7px;
-}
-
-.welcome-text {
-    color: #eef8ff !important;
-    font-size: 16px !important;
-    line-height: 1.55 !important;
-}
-
-/* ---------- AUTH ---------- */
 .auth-area {
     max-width: 470px;
     margin: 18px auto 0 auto;
@@ -116,7 +127,6 @@ header {
     margin-bottom: 18px !important;
 }
 
-/* Tabs must remain clearly clickable. */
 button[data-baseweb="tab"] {
     color: #214d6b !important;
     font-weight: 750 !important;
@@ -127,7 +137,10 @@ button[data-baseweb="tab"][aria-selected="true"] {
     color: #087ea4 !important;
 }
 
-/* ---------- INPUTS ---------- */
+/* =========================================================
+   INPUTS — ALWAYS LIGHT WITH DARK TEXT
+   ========================================================= */
+
 .stTextInput label,
 .stTextArea label,
 .stSelectbox label,
@@ -136,24 +149,37 @@ button[data-baseweb="tab"][aria-selected="true"] {
     font-weight: 700 !important;
 }
 
-div[data-baseweb="input"] {
+div[data-baseweb="input"],
+div[data-baseweb="base-input"] {
     background: #ffffff !important;
     border: 1px solid #aebfd0 !important;
     border-radius: 9px !important;
 }
 
-div[data-baseweb="input"] input {
+div[data-baseweb="input"] input,
+div[data-baseweb="base-input"] input {
     background: #ffffff !important;
     color: #172b3d !important;
     -webkit-text-fill-color: #172b3d !important;
+    caret-color: #0879a5 !important;
 }
 
-div[data-baseweb="input"] input::placeholder {
+div[data-baseweb="input"] input::placeholder,
+div[data-baseweb="base-input"] input::placeholder {
     color: #73879a !important;
     opacity: 1 !important;
 }
 
-/* ---------- BUTTONS ---------- */
+/* Password visibility button */
+div[data-baseweb="input"] button,
+div[data-baseweb="base-input"] button {
+    color: #173f5c !important;
+}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
 .stButton > button,
 .stFormSubmitButton > button {
     min-height: 43px !important;
@@ -174,7 +200,10 @@ div[data-baseweb="input"] input::placeholder {
     border-color: #075f82 !important;
 }
 
-/* ---------- HOME CARDS ---------- */
+/* =========================================================
+   HOME / DASHBOARD CARDS
+   ========================================================= */
+
 .home-card-title {
     color: #083b66 !important;
     font-size: 21px !important;
@@ -193,7 +222,6 @@ div[data-baseweb="input"] input::placeholder {
     margin-bottom: 7px;
 }
 
-/* Streamlit bordered containers used as cards. */
 [data-testid="stVerticalBlockBorderWrapper"] {
     background: #ffffff !important;
     border: 1px solid #d2e1ed !important;
@@ -201,7 +229,39 @@ div[data-baseweb="input"] input::placeholder {
     box-shadow: 0 7px 22px rgba(15, 69, 105, 0.08) !important;
 }
 
-/* ---------- METRICS ---------- */
+/* =========================================================
+   WELCOME BANNER
+   ========================================================= */
+
+.welcome-box {
+    background: linear-gradient(
+        135deg,
+        #0a4778 0%,
+        #12699f 100%
+    ) !important;
+    border-radius: 18px;
+    padding: 27px 30px;
+    margin: 8px 0 24px 0;
+    box-shadow: 0 10px 28px rgba(7, 59, 102, 0.16);
+}
+
+.welcome-title {
+    color: #ffffff !important;
+    font-size: 27px !important;
+    font-weight: 800 !important;
+    margin-bottom: 7px;
+}
+
+.welcome-text {
+    color: #eef8ff !important;
+    font-size: 16px !important;
+    line-height: 1.55 !important;
+}
+
+/* =========================================================
+   METRICS
+   ========================================================= */
+
 [data-testid="stMetric"] {
     background: #ffffff !important;
     border: 1px solid #d7e5ef !important;
@@ -217,9 +277,35 @@ div[data-baseweb="input"] input::placeholder {
     color: #0b3d63 !important;
 }
 
-/* ---------- SIDEBAR ---------- */
+/* =========================================================
+   ALERTS / EXPANDERS — LIGHT AND READABLE
+   ========================================================= */
+
+[data-testid="stAlert"] {
+    color: #173f5c !important;
+}
+
+[data-testid="stExpander"] {
+    background: #ffffff !important;
+    border: 1px solid #d7e5ef !important;
+    border-radius: 10px !important;
+}
+
+[data-testid="stExpander"] summary {
+    color: #173f5c !important;
+}
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #073556 0%, #0a4772 58%, #0b507e 100%) !important;
+    background: linear-gradient(
+        180deg,
+        #073556 0%,
+        #0a4772 58%,
+        #0b507e 100%
+    ) !important;
 }
 
 section[data-testid="stSidebar"] > div {
@@ -300,7 +386,10 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     margin: 17px 0;
 }
 
-/* ---------- NORMAL TEXT ---------- */
+/* =========================================================
+   GENERAL TEXT
+   ========================================================= */
+
 .stMarkdown,
 .stMarkdown p,
 .stCaption,
@@ -308,74 +397,8 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     color: #294a63;
 }
 
-/* ---------- DARK MODE ---------- */
-@media (prefers-color-scheme: dark) {
-    .stApp {
-        background: linear-gradient(135deg, #101923 0%, #152b3d 55%, #102c44 100%) !important;
-    }
-
-    .app-title {
-        color: #73ceff !important;
-    }
-
-    .app-subtitle {
-        color: #d7eaf7 !important;
-    }
-
-    .auth-heading {
-        color: #eaf7ff !important;
-    }
-
-    .auth-description {
-        color: #c6dce9 !important;
-    }
-
-    button[data-baseweb="tab"] {
-        color: #d8edf8 !important;
-    }
-
-    .stTextInput label,
-    .stTextArea label,
-    .stSelectbox label,
-    .stNumberInput label {
-        color: #e7f4fb !important;
-    }
-
-    div[data-baseweb="input"] {
-        background: #ffffff !important;
-    }
-
-    div[data-baseweb="input"] input {
-        color: #172b3d !important;
-        -webkit-text-fill-color: #172b3d !important;
-    }
-
-    .home-card-title {
-        color: #ffffff !important;
-    }
-
-    .home-card-text {
-        color: #dcecf6 !important;
-    }
-
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background: #18364f !important;
-        border-color: #2e5876 !important;
-    }
-
-    [data-testid="stMetric"] {
-        background: #18364f !important;
-        border-color: #2e5876 !important;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: #c7dce9 !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        color: #ffffff !important;
-    }
-}
+/* Never switch this app into a dark CSS theme based on the
+   user's operating-system/browser preference. */
 </style>
         """,
         unsafe_allow_html=True,
@@ -393,9 +416,44 @@ try:
     init_db()
 except Exception as e:
     st.error("Unable to connect to the HR database.")
-    with st.expander("Technical details"):
-        st.exception(e)
     st.stop()
+
+
+# ============================================================
+# SESSION / AUTH HELPERS
+# ============================================================
+
+def remember_login(user):
+    """Keep a small local session copy as a compatibility bridge
+    for existing pages that use Streamlit session_state."""
+    st.session_state["hr_logged_in"] = True
+    st.session_state["hr_user"] = user
+    st.session_state["logged_in"] = True
+    st.session_state["user"] = user
+
+
+def clear_login():
+    for key in [
+        "hr_logged_in",
+        "hr_user",
+        "logged_in",
+        "user",
+    ]:
+        st.session_state.pop(key, None)
+
+
+def get_logged_user():
+    """Prefer the existing auth module, then fall back to the
+    session bridge created above."""
+    try:
+        user = current_user()
+        if user:
+            return user
+    except Exception:
+        pass
+
+    user = st.session_state.get("hr_user")
+    return user if isinstance(user, dict) else None
 
 
 # ============================================================
@@ -444,7 +502,6 @@ def find_page(*keywords):
         if all(keyword.lower() in lower for keyword in keywords):
             return str(path)
 
-    # If multiple keywords are too restrictive, try any keyword.
     for keyword in keywords:
         for path in page_files():
             if keyword.lower() in path.stem.lower():
@@ -454,10 +511,89 @@ def find_page(*keywords):
 
 
 def go_to(path):
-    if path:
-        st.switch_page(path)
-    else:
+    if not path:
         st.warning("This page is not available yet.")
+        return
+
+    # Streamlit navigation is more reliable with a path relative
+    # to the project root.
+    try:
+        project_root = Path(__file__).parent.resolve()
+        target = Path(path).resolve()
+
+        if target == project_root / "app.py":
+            st.switch_page("app.py")
+            return
+
+        relative = target.relative_to(project_root)
+        st.switch_page(str(relative).replace("\\", "/"))
+    except Exception:
+        # Fallback for existing Streamlit page paths.
+        try:
+            st.switch_page(str(path))
+        except Exception:
+            st.error("Unable to open this page. Please check the page filename.")
+
+
+# ============================================================
+# EXCEL IMPORT
+# ============================================================
+
+def render_import_excel():
+    st.markdown(
+        '<div class="home-card-title">📥 Import Excel</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="home-card-text">'
+        'Upload an Excel or CSV file and review it before using it in the training system.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    uploaded = st.file_uploader(
+        "Choose an Excel/CSV file",
+        type=["xlsx", "xls", "csv"],
+        key="home_excel_upload",
+    )
+
+    if uploaded is None:
+        st.caption("Supported formats: .xlsx, .xls and .csv")
+        return
+
+    try:
+        if uploaded.name.lower().endswith(".csv"):
+            df = pd.read_csv(uploaded)
+        else:
+            df = pd.read_excel(uploaded)
+
+        st.success(
+            f"{uploaded.name} loaded successfully — "
+            f"{len(df):,} rows × {len(df.columns):,} columns."
+        )
+
+        st.dataframe(
+            df.head(50),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.download_button(
+            "⬇️ Download preview as CSV",
+            data=df.to_csv(index=False).encode("utf-8"),
+            file_name=f"{Path(uploaded.name).stem}_preview.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.info(
+            "The file is previewed safely first. Database insertion is not performed "
+            "automatically because the existing training-table schema must be preserved."
+        )
+
+    except Exception as e:
+        st.error("The selected file could not be read.")
+        st.caption(str(e))
 
 
 # ============================================================
@@ -472,22 +608,16 @@ def render_login_signup():
     )
 
     st.markdown(
-        '<div class="app-subtitle">Training management system — sign in to continue.</div>',
+        '<div class="app-subtitle">'
+        'Training management system — sign in to continue.'
+        '</div>',
         unsafe_allow_html=True,
     )
-
-    # No HTML auth-card wrapper here.
-    # This removes the unwanted empty white box and prevents
-    # HTML source from appearing as visible code.
 
     _, center, _ = st.columns([1, 1.05, 1])
 
     with center:
-
-        st.markdown(
-            '<div class="auth-area">',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="auth-area">', unsafe_allow_html=True)
 
         login_tab, signup_tab = st.tabs(
             ["🔐 Log in", "👤 Create account"]
@@ -498,19 +628,19 @@ def render_login_signup():
         # ----------------------------------------------------
 
         with login_tab:
-
             st.markdown(
                 '<div class="auth-heading">Welcome back</div>',
                 unsafe_allow_html=True,
             )
 
             st.markdown(
-                '<div class="auth-description">Enter your username or email and password.</div>',
+                '<div class="auth-description">'
+                'Enter your username or email and password.'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
             with st.form("login_form", clear_on_submit=False):
-
                 identifier = st.text_input(
                     "Username or email",
                     placeholder="Enter username or email",
@@ -531,47 +661,51 @@ def render_login_signup():
                 )
 
             if submitted:
-
                 identifier = identifier.strip()
 
                 if not identifier or not password:
                     st.error("Please enter both username/email and password.")
-
                 else:
                     try:
                         user = authenticate(identifier, password)
 
                         if user:
                             login_user(user)
+                            remember_login(user)
                             st.success("Login successful.")
                             st.rerun()
                         else:
                             st.error("Invalid username/email or password.")
 
-                    except Exception as e:
+                    except Exception:
                         st.error("Unable to log in. Please try again.")
 
-                        with st.expander("Technical details"):
-                            st.exception(e)
+            st.write("")
+            if st.button(
+                "📥  Import Excel",
+                key="auth_import_login",
+                use_container_width=True,
+            ):
+                st.warning("Please sign in first. Import Excel is available from the Home page.")
 
         # ----------------------------------------------------
         # CREATE ACCOUNT
         # ----------------------------------------------------
 
         with signup_tab:
-
             st.markdown(
                 '<div class="auth-heading">Create your account</div>',
                 unsafe_allow_html=True,
             )
 
             st.markdown(
-                '<div class="auth-description">Register to access the HR Training Dashboard.</div>',
+                '<div class="auth-description">'
+                'Register to access the HR Training Dashboard.'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
             with st.form("signup_form", clear_on_submit=False):
-
                 full_name = st.text_input(
                     "Full name",
                     placeholder="e.g. Samoda De Silva",
@@ -611,12 +745,10 @@ def render_login_signup():
                 )
 
             if create_submitted:
-
                 full_name = full_name.strip()
                 username = username.strip().lower()
                 email = email.strip().lower()
 
-                # Basic validation before touching the database.
                 if not full_name:
                     st.error("Please enter your full name.")
 
@@ -629,7 +761,10 @@ def render_login_signup():
                         "numbers, dots, underscores or hyphens."
                     )
 
-                elif not email or "@" not in email:
+                elif not email or not re.fullmatch(
+                    r"[^@\s]+@[^@\s]+\.[^@\s]+",
+                    email,
+                ):
                     st.error("Please enter a valid email address.")
 
                 elif len(password) < 8:
@@ -640,7 +775,6 @@ def render_login_signup():
 
                 else:
                     try:
-
                         create_user(
                             username=username,
                             email=email,
@@ -648,22 +782,38 @@ def render_login_signup():
                             password=password,
                         )
 
+                        # Clear form values so the new account is not
+                        # accidentally submitted again.
+                        for key in [
+                            "signup_full_name",
+                            "signup_username",
+                            "signup_email",
+                            "signup_password",
+                            "signup_confirm",
+                        ]:
+                            st.session_state.pop(key, None)
+
                         st.success(
                             "Account created successfully. "
-                            "You can now log in."
+                            "Please use the Log in tab."
                         )
 
                     except ValueError as e:
                         st.error(str(e))
 
-                    except Exception as e:
+                    except Exception:
                         st.error(
                             "Unable to create the account. "
                             "Please check the database connection."
                         )
 
-                        with st.expander("Technical details"):
-                            st.exception(e)
+            st.write("")
+            if st.button(
+                "📥  Import Excel",
+                key="auth_import_login",
+                use_container_width=True,
+            ):
+                st.warning("Please sign in first. Import Excel is available from the Home page.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -674,7 +824,7 @@ def render_login_signup():
 
 def render_sidebar():
 
-    user = current_user()
+    user = get_logged_user()
 
     if not user:
         return
@@ -699,20 +849,25 @@ def render_sidebar():
 
         st.markdown(
             """
-<div class="sidebar-brand">
-    <div class="sidebar-brand-icon">📊</div>
-    <div class="sidebar-brand-title">HR Training Dashboard</div>
-</div>
+            <div class="sidebar-brand">
+                <div class="sidebar-brand-icon">📊</div>
+                <div class="sidebar-brand-title">HR Training Dashboard</div>
+            </div>
             """,
             unsafe_allow_html=True,
         )
 
         st.markdown(
             f"""
-<div class="sidebar-user">
-    <div class="sidebar-user-name">👤 {html.escape(str(full_name))}</div>
-    <div class="sidebar-user-role">@{html.escape(str(username))} · {html.escape(str(role).title())}</div>
-</div>
+            <div class="sidebar-user">
+                <div class="sidebar-user-name">
+                    👤 {html.escape(str(full_name))}
+                </div>
+                <div class="sidebar-user-role">
+                    @{html.escape(str(username))}
+                    · {html.escape(str(role).title())}
+                </div>
+            </div>
             """,
             unsafe_allow_html=True,
         )
@@ -734,7 +889,6 @@ def render_sidebar():
                 "📊   Dashboard",
                 key="sidebar_dashboard",
                 use_container_width=True,
-                type="primary",
             ):
                 go_to(dashboard_page)
 
@@ -746,6 +900,9 @@ def render_sidebar():
             ):
                 go_to(data_page)
 
+        # Always show Import Excel in the signed-in navigation.
+        # If an existing import page exists, open it.
+        # Otherwise the Home page contains the built-in uploader.
         if import_page:
             if st.button(
                 "📥   Import Excel",
@@ -753,6 +910,14 @@ def render_sidebar():
                 use_container_width=True,
             ):
                 go_to(import_page)
+        else:
+            if st.button(
+                "📥   Import Excel",
+                key="sidebar_import_home",
+                use_container_width=True,
+            ):
+                st.session_state["open_excel_import"] = True
+                go_to("app.py")
 
         if records_page:
             if st.button(
@@ -780,8 +945,11 @@ def render_sidebar():
             key="sidebar_logout",
             use_container_width=True,
         ):
-            logout_user()
-            st.rerun()
+            try:
+                logout_user()
+            finally:
+                clear_login()
+                st.rerun()
 
 
 # ============================================================
@@ -790,7 +958,7 @@ def render_sidebar():
 
 def render_home():
 
-    user = current_user()
+    user = get_logged_user()
 
     if not user:
         return
@@ -814,13 +982,16 @@ def render_home():
 
     st.markdown(
         f"""
-<div class="welcome-box">
-    <div class="welcome-title">📊 HR Training Dashboard</div>
-    <div class="welcome-text">
-        Welcome back, <strong>{safe_name}</strong> 👋<br>
-        Manage training programmes, participants, records and company-wide training performance.
-    </div>
-</div>
+        <div class="welcome-box">
+            <div class="welcome-title">
+                📊 HR Training Dashboard
+            </div>
+            <div class="welcome-text">
+                Welcome back, <strong>{safe_name}</strong> 👋<br>
+                Manage training programmes, participants, records
+                and company-wide training performance.
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -828,25 +999,24 @@ def render_home():
     col1, col2, col3 = st.columns(3)
 
     # --------------------------------------------------------
-    # DASHBOARD CARD
+    # DASHBOARD
     # --------------------------------------------------------
 
     with col1:
-
         with st.container(border=True):
-
             st.markdown(
                 '<div class="home-card-icon">📊</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
                 '<div class="home-card-title">Training Dashboard</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
-                '<div class="home-card-text">View company-wide KPIs, training hours, programmes, participants, costs and trends.</div>',
+                '<div class="home-card-text">'
+                'View company-wide KPIs, training hours, programmes, '
+                'participants, costs and trends.'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
@@ -860,27 +1030,28 @@ def render_home():
                     type="primary",
                 ):
                     go_to(dashboard_page)
+            else:
+                st.caption("Dashboard page not found.")
 
     # --------------------------------------------------------
-    # DATA ENTRY CARD
+    # DATA ENTRY
     # --------------------------------------------------------
 
     with col2:
-
         with st.container(border=True):
-
             st.markdown(
                 '<div class="home-card-icon">📝</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
                 '<div class="home-card-title">Data Entry</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
-                '<div class="home-card-text">Add new training programmes, participants, dates, locations, costs and training hours.</div>',
+                '<div class="home-card-text">'
+                'Add new training programmes, participants, dates, '
+                'locations, costs and training hours.'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
@@ -894,27 +1065,27 @@ def render_home():
                     type="primary",
                 ):
                     go_to(data_page)
+            else:
+                st.caption("Data Entry page not found.")
 
     # --------------------------------------------------------
-    # RECORDS CARD
+    # RECORDS
     # --------------------------------------------------------
 
     with col3:
-
         with st.container(border=True):
-
             st.markdown(
                 '<div class="home-card-icon">📁</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
                 '<div class="home-card-title">Training Records</div>',
                 unsafe_allow_html=True,
             )
-
             st.markdown(
-                '<div class="home-card-text">Browse, edit, export and manage existing training records.</div>',
+                '<div class="home-card-text">'
+                'Browse, edit, export and manage existing training records.'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
@@ -928,39 +1099,50 @@ def render_home():
                     type="primary",
                 ):
                     go_to(records_page)
+            else:
+                st.caption("Records page not found.")
 
     # --------------------------------------------------------
-    # IMPORT EXCEL
+    # IMPORT EXCEL — ALWAYS VISIBLE AFTER LOGIN
     # --------------------------------------------------------
 
-    if import_page:
+    st.write("")
 
-        st.write("")
+    with st.container(border=True):
+        st.markdown(
+            '<div class="home-card-icon">📥</div>',
+            unsafe_allow_html=True,
+        )
 
-        with st.container(border=True):
+        st.markdown(
+            '<div class="home-card-title">Import Excel</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.markdown(
-                '<div class="home-card-icon">📥</div>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            '<div class="home-card-text">'
+            'Import existing training information from Excel or CSV.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.markdown(
-                '<div class="home-card-title">Import Excel</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                '<div class="home-card-text">Import existing training data from an Excel file using the dedicated import page.</div>',
-                unsafe_allow_html=True,
-            )
-
+        if import_page:
             if st.button(
-                "Import Excel →",
-                key="home_import",
+                "Open Import Excel →",
+                key="home_import_page",
                 use_container_width=True,
                 type="primary",
             ):
                 go_to(import_page)
+        else:
+            st.caption(
+                "No separate Import page was found, so the built-in uploader is available below."
+            )
+
+        # Built-in uploader is also available when there is no
+        # dedicated Import page.
+        if not import_page or st.session_state.get("open_excel_import", False):
+            render_import_excel()
 
     # --------------------------------------------------------
     # USER INFORMATION
@@ -971,10 +1153,7 @@ def render_home():
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        st.metric(
-            "Logged-in User",
-            full_name,
-        )
+        st.metric("Logged-in User", full_name)
 
     with c2:
         st.metric(
@@ -988,11 +1167,8 @@ def render_home():
             str(role).title(),
         )
 
-    # Account button
     if account_page:
-
         st.write("")
-
         if st.button(
             "👤  Open My Account",
             key="home_account",
@@ -1005,7 +1181,12 @@ def render_home():
 # APPLICATION
 # ============================================================
 
-if is_logged_in():
+try:
+    logged_in = bool(is_logged_in())
+except Exception:
+    logged_in = False
+
+if logged_in or get_logged_user():
     render_sidebar()
     render_home()
 else:

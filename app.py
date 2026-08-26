@@ -224,6 +224,7 @@ def ensure_training_schema():
         training_type VARCHAR(100),
         location VARCHAR(255),
         power_plant VARCHAR(255),
+        trainer_name TEXT,
         participant_names TEXT,
         training_cost NUMERIC(14,2) DEFAULT 0,
         training_hours NUMERIC(12,2) DEFAULT 0,
@@ -289,6 +290,34 @@ def ensure_training_schema():
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='power_plant') THEN
             ALTER TABLE public.training_records ADD COLUMN power_plant VARCHAR(255);
         END IF;
+
+        -- Trainer name. Existing records remain valid with NULL/blank trainer names.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='trainer_name') THEN
+            ALTER TABLE public.training_records ADD COLUMN trainer_name TEXT;
+        END IF;
+
+        -- The deployed database may have an older training_type CHECK constraint
+        -- that rejects values such as Compliance. Replace it safely with the
+        -- current four supported values.
+        UPDATE public.training_records
+        SET training_type = CASE
+            WHEN LOWER(TRIM(training_type)) LIKE '%soft%' THEN 'Soft Skill'
+            WHEN LOWER(TRIM(training_type)) LIKE '%technical%' OR LOWER(TRIM(training_type)) = 'tech' THEN 'Technical'
+            WHEN LOWER(TRIM(training_type)) LIKE '%compliance%' THEN 'Compliance'
+            WHEN TRIM(training_type) IN ('Technical', 'Soft Skill', 'Compliance', 'Other') THEN TRIM(training_type)
+            ELSE 'Other'
+        END
+        WHERE training_type IS NOT NULL;
+
+        ALTER TABLE public.training_records
+            DROP CONSTRAINT IF EXISTS training_records_training_type_check;
+
+        ALTER TABLE public.training_records
+            ADD CONSTRAINT training_records_training_type_check
+            CHECK (
+                training_type IS NULL
+                OR training_type IN ('Technical', 'Soft Skill', 'Compliance', 'Other')
+            );
 
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participant_names') THEN
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='names_of_participants') THEN
@@ -434,6 +463,7 @@ SELECT
     training_type,
     location,
     power_plant,
+    trainer_name,
     participant_names,
     training_cost,
     training_hours,
@@ -458,6 +488,11 @@ def get_training_records():
     else:
         df["power_plant"] = df["power_plant"].fillna("Not Specified").astype(str).str.strip()
         df.loc[df["power_plant"] == "", "power_plant"] = "Not Specified"
+
+    if "trainer_name" not in df.columns:
+        df["trainer_name"] = ""
+    else:
+        df["trainer_name"] = df["trainer_name"].fillna("").astype(str).str.strip()
 
     for col in ["from_date", "to_date", "created_at"]:
         if col in df.columns:
@@ -533,6 +568,7 @@ def insert_training_record(
     training_type,
     location,
     power_plant,
+    trainer_name,
     participant_names,
     training_cost,
     training_hours,
@@ -548,6 +584,7 @@ def insert_training_record(
         "training_type": training_type,
         "location": location,
         "power_plant": power_plant,
+        "trainer_name": trainer_name,
         "participant_names": participant_names,
         "training_cost": float(training_cost),
         "training_hours": float(training_hours),
@@ -561,13 +598,13 @@ def insert_training_record(
                 """
                 INSERT INTO training_records (
                     programme_name, from_date, to_date, quarter,
-                    training_type, location, power_plant, participant_names,
+                    training_type, location, power_plant, trainer_name, participant_names,
                     training_cost, training_hours, participants_count,
                     total_hours, created_by
                 )
                 VALUES (
                     :programme_name, :from_date, :to_date, :quarter,
-                    :training_type, :location, :power_plant, :participant_names,
+                    :training_type, :location, :power_plant, :trainer_name, :participant_names,
                     :training_cost, :training_hours, :participants_count,
                     :total_hours, :created_by
                 )
@@ -582,12 +619,12 @@ def insert_training_record(
         """
         INSERT INTO training_records (
             programme_name, from_date, to_date, quarter,
-            training_type, location, power_plant, participant_names,
+            training_type, location, power_plant, trainer_name, participant_names,
             training_cost, training_hours, participants_count, total_hours
         )
         VALUES (
             :programme_name, :from_date, :to_date, :quarter,
-            :training_type, :location, :power_plant, :participant_names,
+            :training_type, :location, :power_plant, :trainer_name, :participant_names,
             :training_cost, :training_hours, :participants_count, :total_hours
         )
         """,
@@ -603,6 +640,7 @@ def update_training_record(
     training_type,
     location,
     power_plant,
+    trainer_name,
     participant_names,
     training_cost,
     training_hours,
@@ -620,6 +658,7 @@ def update_training_record(
             training_type = :training_type,
             location = :location,
             power_plant = :power_plant,
+            trainer_name = :trainer_name,
             participant_names = :participant_names,
             training_cost = :training_cost,
             training_hours = :training_hours,
@@ -636,6 +675,7 @@ def update_training_record(
             "training_type": training_type,
             "location": location,
             "power_plant": power_plant,
+            "trainer_name": trainer_name,
             "participant_names": participant_names,
             "training_cost": float(training_cost),
             "training_hours": float(training_hours),
@@ -661,6 +701,7 @@ COLUMN_ALIASES = {
     "participant_names": ["names of the participants", "participant names", "participants"],
     "location": ["location", "loc", "site"],
     "power_plant": ["power plant", "powerplant", "plant", "plant name"],
+    "trainer_name": ["trainer name", "trainer", "trainer's name", "trainers name", "facilitator", "facilitator name"],
     "training_cost": ["training cost", "cost"],
     "training_hours": ["training hours", "hours"],
     "participants_count": ["no of people attended", "no of participants", "participants count", "number of people attended"],
@@ -742,6 +783,7 @@ def prepare_excel_dataframe(uploaded_file):
     optional_defaults = {
         "to_date": None,
         "quarter": None,
+        "trainer_name": "",
         "participant_names": "",
         "total_hours": None,
     }
@@ -899,13 +941,17 @@ def transform_import_rows(df):
             if from_date is None:
                 raise ValueError("Invalid From Date")
 
-            location = str(source.get("location") or "").strip()
-            if not location:
-                raise ValueError("Location is empty")
-
             power_plant = str(source.get("power_plant") or "").strip()
             if not power_plant:
                 power_plant = "Not Specified"
+
+            # Location is now derived from the Power Plant in manual entry.
+            # Keep an Excel Location column when it exists for backward compatibility.
+            location = str(source.get("location") or "").strip()
+            if not location:
+                location = power_plant
+
+            trainer_name = str(source.get("trainer_name") or "").strip()
 
             training_hours = parse_number(source.get("training_hours"), 0)
             participants = parse_number(source.get("participants_count"), 0)
@@ -934,6 +980,7 @@ def transform_import_rows(df):
                     "to_date": to_date,
                     "quarter": normalize_quarter(source.get("quarter"), from_date),
                     "training_type": normalize_training_type(source.get("training_type")),
+                    "trainer_name": trainer_name,
                     "participant_names": participant_text,
                     "location": location,
                     "power_plant": power_plant,
@@ -1160,7 +1207,6 @@ def render_data_entry():
         unsafe_allow_html=True,
     )
 
-    locations = get_locations()
     power_plants = get_power_plants()
 
     with st.container(border=True):
@@ -1171,40 +1217,35 @@ def render_data_entry():
                 "Name of the Programme *",
                 placeholder="e.g. Leadership Development Programme"
             )
+
+            trainer_name = st.text_input(
+                "Trainer's Name *",
+                placeholder="e.g. Roshan Siriwardana"
+            )
+
             from_date = st.date_input("From Date *", value=date.today())
             to_date = st.date_input("To Date *", value=date.today())
+
             training_type = st.selectbox(
                 "Type *",
                 ["Technical", "Soft Skill", "Compliance", "Other"]
             )
+
             quarter = st.selectbox("Quarter *", ["Q1", "Q2", "Q3", "Q4"])
 
         with right:
-            location_mode = st.selectbox(
-                "Location *",
-                ["Select existing site", "+ Add new site"],
-                key="entry_location_mode",
-            )
-            if location_mode == "+ Add new site":
-                location = st.text_input(
-                    "New site name *",
-                    placeholder="e.g. HOF"
-                )
-            else:
-                location = st.selectbox(
-                    "Select site *",
-                    locations,
-                    key="entry_location",
-                )
-
+            # Power Plant is the single site/plant selector.
+            # Location is automatically stored as the selected power plant
+            # so the dashboard can continue using Location as its only filter.
             plant_mode = st.selectbox(
-                "Power Plant",
+                "Power Plant *",
                 ["No Power Plant / Not Applicable"] + power_plants + ["+ Add new power plant"],
                 key="entry_plant_mode",
             )
+
             if plant_mode == "+ Add new power plant":
                 power_plant = st.text_input(
-                    "New power plant name",
+                    "New power plant name *",
                     placeholder="e.g. BBO"
                 )
             elif plant_mode == "No Power Plant / Not Applicable":
@@ -1218,12 +1259,14 @@ def render_data_entry():
                 step=0.5,
                 format="%.2f"
             )
+
             participants = st.number_input(
                 "No. of Workers Attended *",
                 min_value=0,
                 step=1,
                 format="%d"
             )
+
             cost = st.number_input(
                 "Training Cost (Rs.)",
                 min_value=0.0,
@@ -1250,21 +1293,32 @@ def render_data_entry():
 
     if save:
         programme = programme.strip()
-        location = location.strip()
+        trainer_name = trainer_name.strip()
         power_plant = power_plant.strip()
+
+        # Power Plant is now the source for Location.
+        location = power_plant
 
         if not programme:
             st.error("Please enter the programme name.")
             return
-        if not location:
-            st.error("Please enter/select a site.")
+
+        if not trainer_name:
+            st.error("Please enter the trainer's name.")
             return
+
+        if not power_plant:
+            st.error("Please select or enter a power plant.")
+            return
+
         if to_date < from_date:
             st.error("To Date cannot be earlier than From Date.")
             return
+
         if training_hours <= 0:
             st.error("Training Hours per Worker must be greater than 0.")
             return
+
         if participants <= 0:
             st.error("No. of Workers Attended must be greater than 0.")
             return
@@ -1278,6 +1332,7 @@ def render_data_entry():
                 training_type=training_type,
                 location=location,
                 power_plant=power_plant,
+                trainer_name=trainer_name,
                 participant_names=participant_names.strip(),
                 training_cost=cost,
                 training_hours=training_hours,
@@ -1292,6 +1347,7 @@ def render_data_entry():
             st.error("Unable to save the training record.")
             with st.expander("Technical details"):
                 st.exception(e)
+
 
 def render_import_excel():
     user = require_user()
@@ -1429,6 +1485,7 @@ def render_import_excel():
                         training_type=row["training_type"],
                         location=row["location"],
                         power_plant=row["power_plant"],
+                        trainer_name=row["trainer_name"],
                         participant_names=row["participant_names"],
                         training_cost=row["training_cost"],
                         training_hours=row["training_hours"],
@@ -1729,6 +1786,7 @@ def render_dashboard():
             "to_date",
             "quarter",
             "training_type",
+            "trainer_name",
             "location",
             "power_plant",
             "training_hours",
@@ -1744,6 +1802,7 @@ def render_dashboard():
         "To Date",
         "Quarter",
         "Type",
+        "Trainer",
         "Location",
         "Power Plant",
         "Hours / Worker",
@@ -1777,7 +1836,7 @@ def render_records():
         return
 
     search = st.text_input(
-        "Search programme, location, power plant or type",
+        "Search programme, trainer, location, power plant or type",
         placeholder="Search..."
     )
     filtered = df.copy()
@@ -1786,6 +1845,7 @@ def render_records():
         q = search.strip().lower()
         mask = (
             filtered["programme_name"].astype(str).str.lower().str.contains(q, na=False)
+            | filtered["trainer_name"].astype(str).str.lower().str.contains(q, na=False)
             | filtered["location"].astype(str).str.lower().str.contains(q, na=False)
             | filtered["power_plant"].astype(str).str.lower().str.contains(q, na=False)
             | filtered["training_type"].astype(str).str.lower().str.contains(q, na=False)
@@ -1799,14 +1859,14 @@ def render_records():
     display = display[
         [
             "id", "programme_name", "from_date", "to_date", "quarter",
-            "training_type", "location", "power_plant",
+            "training_type", "trainer_name", "location", "power_plant",
             "training_hours", "participants_count",
             "calculated_total_hours", "training_cost"
         ]
     ]
     display.columns = [
         "ID", "Programme", "From Date", "To Date", "Quarter", "Type",
-        "Location", "Power Plant", "Hours / Worker", "Workers",
+        "Trainer", "Location", "Power Plant", "Hours / Worker", "Workers",
         "Total Training Hours", "Cost (Rs.)"
     ]
     st.dataframe(display, use_container_width=True, hide_index=True)
@@ -1868,15 +1928,10 @@ def render_records():
                 key=f"ety_{selected_id}"
             )
 
-            existing_locations = get_locations()
-            location = st.selectbox(
-                "Location",
-                existing_locations,
-                index=(
-                    existing_locations.index(str(row["location"]))
-                    if str(row["location"]) in existing_locations else 0
-                ),
-                key=f"el_{selected_id}"
+            trainer_name = st.text_input(
+                "Trainer's Name",
+                value=str(row.get("trainer_name", "") or ""),
+                key=f"etrainer_{selected_id}"
             )
 
             existing_plants = ["Not Specified"] + get_power_plants()
@@ -1946,8 +2001,9 @@ def render_records():
                             to_date,
                             quarter,
                             training_type,
-                            location.strip(),
                             power_plant.strip(),
+                            power_plant.strip(),
+                            trainer_name.strip(),
                             names.strip(),
                             cost,
                             training_hours,

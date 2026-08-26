@@ -383,6 +383,39 @@ except Exception as e:
     st.stop()
 
 
+# The single administrator account requested for this application.
+# Change only if your actual username is different.
+ADMIN_USERNAME = "samodad"
+ADMIN_DISPLAY_NAME = "Samoda De Silva"
+
+def ensure_admin_account():
+    """Ensure the requested account has the administrator role.
+
+    This is intentionally limited to one known username and does not
+    change the role of any other account.
+    """
+    try:
+        run_write(
+            "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'"
+        )
+        run_write(
+            """
+            UPDATE public.users
+            SET role = 'admin'
+            WHERE LOWER(TRIM(username)) = LOWER(TRIM(:username))
+            """,
+            {"username": ADMIN_USERNAME},
+        )
+    except Exception:
+        # The app can still run if the deployed auth schema manages roles
+        # differently. The session-level safeguard below handles the
+        # configured administrator account in that case.
+        pass
+
+
+ensure_admin_account()
+
+
 # ============================================================
 # SESSION
 # ============================================================
@@ -410,16 +443,42 @@ if "hr_page" not in st.session_state:
 
 
 def get_user():
+    """Return the logged-in user and enforce the configured admin account."""
+    user = None
     try:
         user = current_user()
-        if user:
-            return user
     except Exception:
+        user = None
+
+    if not user:
+        user = st.session_state.get("hr_user")
+
+    if not user:
+        return None
+
+    try:
+        user = dict(user)
+    except Exception:
+        # Keep compatibility with dict-like auth objects.
         pass
-    return st.session_state.get("hr_user")
+
+    username = str(user.get("username", "")).strip().lower()
+    if username == ADMIN_USERNAME.lower():
+        user["role"] = "admin"
+        user.setdefault("full_name", ADMIN_DISPLAY_NAME)
+
+    st.session_state["hr_user"] = user
+    return user
 
 
 def set_logged_user(user):
+    try:
+        user = dict(user)
+    except Exception:
+        pass
+    if str(user.get("username", "")).strip().lower() == ADMIN_USERNAME.lower():
+        user["role"] = "admin"
+        user.setdefault("full_name", ADMIN_DISPLAY_NAME)
     st.session_state["hr_user"] = user
     st.session_state["hr_page"] = "Home"
 
@@ -1852,6 +1911,10 @@ def render_records():
         )
         filtered = filtered[mask]
 
+    if filtered.empty:
+        st.info("No records match your search.")
+        return
+
     display = filtered.copy()
     display["calculated_total_hours"] = display["training_hours"] * display["participants_count"]
     display["from_date"] = display["from_date"].dt.strftime("%Y-%m-%d")
@@ -1893,18 +1956,24 @@ def render_records():
                 value=str(row["programme_name"] or ""),
                 key=f"ep_{selected_id}"
             )
+            from_default = (
+                row["from_date"].date()
+                if pd.notna(row["from_date"])
+                else date.today()
+            )
+            to_default = (
+                row["to_date"].date()
+                if pd.notna(row["to_date"])
+                else from_default
+            )
             from_date = st.date_input(
                 "From Date",
-                value=row["from_date"].date(),
+                value=from_default,
                 key=f"ef_{selected_id}"
             )
             to_date = st.date_input(
                 "To Date",
-                value=(
-                    row["to_date"].date()
-                    if pd.notna(row["to_date"])
-                    else row["from_date"].date()
-                ),
+                value=to_default,
                 key=f"et_{selected_id}"
             )
             quarter_options = ["Q1", "Q2", "Q3", "Q4"]
@@ -1934,8 +2003,10 @@ def render_records():
                 key=f"etrainer_{selected_id}"
             )
 
+            current_plant = str(row["power_plant"] or "Not Specified").strip()
             existing_plants = ["Not Specified"] + get_power_plants()
-            current_plant = str(row["power_plant"] or "Not Specified")
+            if current_plant and current_plant not in existing_plants:
+                existing_plants.append(current_plant)
             power_plant = st.selectbox(
                 "Power Plant",
                 existing_plants,
@@ -1988,7 +2059,13 @@ def render_records():
                 use_container_width=True,
                 key=f"save_{selected_id}"
             ):
-                if to_date < from_date:
+                if not programme.strip():
+                    st.error("Programme name cannot be empty.")
+                elif not trainer_name.strip():
+                    st.error("Trainer's name cannot be empty.")
+                elif not power_plant.strip():
+                    st.error("Please select a power plant.")
+                elif to_date < from_date:
                     st.error("To Date cannot be earlier than From Date.")
                 elif training_hours <= 0 or participants <= 0:
                     st.error("Training Hours and Workers Attended must be greater than 0.")
@@ -2017,7 +2094,8 @@ def render_records():
                             st.exception(e)
 
         with b2:
-            if str(user.get("role", "user")).lower() == "admin":
+            is_admin = str(user.get("role", "user")).strip().lower() == "admin"
+            if is_admin:
                 if st.button(
                     "Delete Record",
                     use_container_width=True,
@@ -2067,7 +2145,8 @@ def render_account():
 # MAIN
 # ============================================================
 
-if not is_logged_in() and not get_user():
+logged_user = get_user()
+if not logged_user:
     render_login()
 else:
     render_sidebar()

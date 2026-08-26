@@ -1847,7 +1847,6 @@ def render_dashboard():
             "training_type",
             "trainer_name",
             "location",
-            "power_plant",
             "training_hours",
             "participants_count",
             "Total Training Hours",
@@ -1863,7 +1862,6 @@ def render_dashboard():
         "Type",
         "Trainer",
         "Location",
-        "Power Plant",
         "Hours / Worker",
         "Workers",
         "Total Training Hours",
@@ -1895,7 +1893,7 @@ def render_records():
         return
 
     search = st.text_input(
-        "Search programme, trainer, location, power plant or type",
+        "Search programme, trainer, location or type",
         placeholder="Search..."
     )
     filtered = df.copy()
@@ -1922,14 +1920,14 @@ def render_records():
     display = display[
         [
             "id", "programme_name", "from_date", "to_date", "quarter",
-            "training_type", "trainer_name", "location", "power_plant",
+            "training_type", "trainer_name", "location",
             "training_hours", "participants_count",
             "calculated_total_hours", "training_cost"
         ]
     ]
     display.columns = [
         "ID", "Programme", "From Date", "To Date", "Quarter", "Type",
-        "Trainer", "Location", "Power Plant", "Hours / Worker", "Workers",
+        "Trainer", "Location", "Hours / Worker", "Workers",
         "Total Training Hours", "Cost (Rs.)"
     ]
     st.dataframe(display, use_container_width=True, hide_index=True)

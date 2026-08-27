@@ -14,7 +14,7 @@ from auth.auth import (
     logout_user,
     is_logged_in,
     current_user,
-    change_password, 
+    change_password,
 )
 
 # ============================================================
@@ -2467,10 +2467,11 @@ def render_dashboard():
     # MAIN FILTERS
     # ------------------------------------------------------------
     with st.container(border=True):
-        # Give Training Type and Category extra width because they contain
-        # long values such as "Japanese Management Systems".
+        # Use balanced widths so Location, Year, Quarter, Training Type,
+        # and Category are all clearly readable. Extra width is retained
+        # for long values such as "Japanese Management Systems".
         f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.0, 0.85, 0.95, 1.75, 1.75, 1.05]
+            [1.25, 1.10, 1.15, 1.65, 1.65, 1.05]
         )
 
         locations = ["All Locations"] + sorted(
@@ -2774,8 +2775,7 @@ def render_dashboard():
     st.caption(
         "Actuals are calculated from Training Cost. "
         "Budget values come from the separate Budget Entry section. "
-        "Use the HOF/BBO Location selector or Category selector below "
-        "to compare Budget vs Actual."
+        "Use the Location or Category selector below to compare Budget vs Actual."
     )
 
     budget_df = get_budget_records()
@@ -3595,8 +3595,8 @@ def render_budget_entry():
     )
 
     st.info(
-        "Budget locations are limited to HOF and BBO. "
-        "Training Cost is the Actual amount used for Budget vs Actual comparison."
+        "Budget Entry is available for all configured locations. "
+        "Training Cost is the actual amount used for Budget vs Actual comparison."
     )
 
     st.markdown(
@@ -3618,8 +3618,10 @@ def render_budget_entry():
         unsafe_allow_html=True,
     )
 
-    # Budget Entry is intentionally restricted to the two required
-    # budget locations: HOF and BBO.
+    # Budget Entry supports all configured company locations.
+    # BUDGET_LOCATIONS is based on KNOWN_LOCATIONS and therefore includes
+    # HOF, BBO, BTO, BKN, EME, MGT, GNT, HS1, HS2, LKM, MVB, ORK,
+    # RDP, UDW, VBL and WMB.
     budget_df = get_budget_records()
     locations = BUDGET_LOCATIONS.copy()
 

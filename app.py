@@ -225,7 +225,7 @@ TRAINING_CATEGORIES = [
     "Internal Training",
     "External Training",
     "Overseas Training",
-    "Management Trainings",
+    "Management Training",
 ]
 
 def ensure_training_schema():
@@ -530,7 +530,7 @@ def ensure_training_schema():
         SET category = CASE
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
-            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Trainings'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Training'
             ELSE 'Internal Training'
         END;
 
@@ -541,7 +541,7 @@ def ensure_training_schema():
                     'Internal Training',
                     'External Training',
                     'Overseas Training',
-                    'Management Trainings'
+                    'Management Training'
                 )
             );
 
@@ -608,7 +608,7 @@ def ensure_training_schema():
         SET category = CASE
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
-            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Trainings'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Training'
             ELSE 'Internal Training'
         END
         WHERE category IS NULL OR TRIM(category) = ''
@@ -616,7 +616,7 @@ def ensure_training_schema():
                 'Internal Training',
                 'External Training',
                 'Overseas Training',
-                'Management Trainings'
+                'Management Training'
            );
 
         ALTER TABLE public.training_budgets
@@ -626,7 +626,7 @@ def ensure_training_schema():
                     'Internal Training',
                     'External Training',
                     'Overseas Training',
-                    'Management Trainings'
+                    'Management Training'
                 )
             );
     END $$;
@@ -702,7 +702,7 @@ KNOWN_LOCATIONS = [
     "UDW", "VBL", "WMB"
 ]
 
-BUDGET_LOCATIONS = ["HOF", "BBO"]
+BUDGET_LOCATIONS = KNOWN_LOCATIONS.copy()
 
 KNOWN_POWER_PLANTS = KNOWN_LOCATIONS.copy()
 SUPPORTED_YEARS = [2026, 2025, 2024]
@@ -1452,7 +1452,7 @@ def normalize_category(value):
     if "overseas" in text or "over sea" in text:
         return "Overseas Training"
     if "management" in text:
-        return "Management Trainings"
+        return "Management Training"
     if "internal" in text:
         return "Internal Training"
 
@@ -2467,8 +2467,10 @@ def render_dashboard():
     # MAIN FILTERS
     # ------------------------------------------------------------
     with st.container(border=True):
+        # Give Training Type and Category extra width because they contain
+        # long values such as "Japanese Management Systems".
         f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.25, 1.0, 1.05, 1.2, 1.25, 1.2]
+            [1.0, 0.85, 0.95, 1.75, 1.75, 1.05]
         )
 
         locations = ["All Locations"] + sorted(
@@ -2772,7 +2774,8 @@ def render_dashboard():
     st.caption(
         "Actuals are calculated from Training Cost. "
         "Budget values come from the separate Budget Entry section. "
-        "Use the Location and Category selectors below to compare Budget vs Actual."
+        "Use the HOF/BBO Location selector or Category selector below "
+        "to compare Budget vs Actual."
     )
 
     budget_df = get_budget_records()
@@ -2809,17 +2812,12 @@ def render_dashboard():
 
         b1, b2, b3, b4 = st.columns(4)
 
-        budget_locations = ["All Locations"] + sorted(
-            set(
-                BUDGET_LOCATIONS
-                + budget_df["location"]
-                .dropna()
-                .astype(str)
-                .str.strip()
-                .tolist()
-            ),
-            key=str.upper,
-        )
+        # Budget comparison supports all configured company locations.
+        budget_df = budget_df[
+            budget_df["location"].astype(str).str.strip().isin(BUDGET_LOCATIONS)
+        ].copy()
+
+        budget_locations = ["All Locations"] + BUDGET_LOCATIONS
 
         budget_location = b1.selectbox(
             "Select Location",
@@ -3592,8 +3590,13 @@ def render_budget_entry():
 
     st.title("Training Budget Entry")
     st.caption(
-        "Enter and manage separate annual budgets for HOF or BBO and each training category. "
+        "Enter and manage separate annual budgets for each location and training category. "
         "This section is available to all logged-in users."
+    )
+
+    st.info(
+        "Budget locations are limited to HOF and BBO. "
+        "Training Cost is the Actual amount used for Budget vs Actual comparison."
     )
 
     st.markdown(
@@ -3603,28 +3606,22 @@ def render_budget_entry():
                 Budget Structure
             </div>
             <div class="formula-text">
-                Budget = Year + Location (HOF / BBO) + Category + Budget Amount
+                Budget = Year + Location + Category + Budget Amount
             </div>
             <div class="small-note">
                 Categories:
                 Internal Training · External Training ·
-                Overseas Training · Management Trainings
+                Overseas Training · Management Training
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # Budget Entry is intentionally restricted to the two required
+    # budget locations: HOF and BBO.
     budget_df = get_budget_records()
-    existing_budget_locations = (
-        budget_df["location"].dropna().astype(str).str.strip().tolist()
-        if not budget_df.empty and "location" in budget_df.columns
-        else []
-    )
-    locations = sorted(
-        set(BUDGET_LOCATIONS + existing_budget_locations),
-        key=str.upper,
-    )
+    locations = BUDGET_LOCATIONS.copy()
 
     with st.container(border=True):
         st.subheader("Enter / Update Budget")
@@ -3792,19 +3789,12 @@ def render_budget_entry():
                 key=f"edit_budget_year_{selected_budget_id}",
             )
 
-            edit_locations = locations.copy()
+            # Budget editing supports all configured company locations.
+            edit_locations = BUDGET_LOCATIONS.copy()
 
             current_location = str(
                 budget_row["location"]
-            )
-
-            if (
-                current_location
-                and current_location not in edit_locations
-            ):
-                edit_locations.append(
-                    current_location
-                )
+            ).strip()
 
             edit_location = st.selectbox(
                 "Location",

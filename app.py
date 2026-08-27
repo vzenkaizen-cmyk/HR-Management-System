@@ -208,12 +208,28 @@ section[data-testid="stFileUploaderDropzone"] button * {
 )
 
 
+
 # ============================================================
 # DATABASE
 # ============================================================
 
+TRAINING_TYPES = [
+    "Technical",
+    "Soft Skill",
+    "Compliance",
+    "Japanese Management Systems",
+    "Other",
+]
+
+TRAINING_CATEGORIES = [
+    "Internal Training",
+    "External Training",
+    "Overseas Training",
+    "Management Trainings",
+]
+
 def ensure_training_schema():
-    """Create/upgrade the training table without deleting existing data."""
+    """Create/upgrade training and budget tables without deleting existing data."""
     migration_sql = r"""
     CREATE TABLE IF NOT EXISTS public.training_records (
         id BIGSERIAL PRIMARY KEY,
@@ -222,6 +238,7 @@ def ensure_training_schema():
         to_date DATE,
         quarter VARCHAR(10),
         training_type VARCHAR(100),
+        category VARCHAR(100),
         location VARCHAR(255),
         power_plant VARCHAR(255),
         trainer_name TEXT,
@@ -234,144 +251,400 @@ def ensure_training_schema():
         created_at TIMESTAMPTZ DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS public.training_budgets (
+        id BIGSERIAL PRIMARY KEY,
+        budget_year INTEGER NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        budget_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     DO $$
     BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='programme_name') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='program_name') THEN
+        -- -------------------------
+        -- training_records columns
+        -- -------------------------
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='programme_name'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='program_name'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN program_name TO programme_name;
-            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='programme') THEN
+            ELSIF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='programme'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN programme TO programme_name;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN programme_name TEXT;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='from_date') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='start_date') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='from_date'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='start_date'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN start_date TO from_date;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN from_date DATE;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='to_date') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='end_date') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='to_date'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='end_date'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN end_date TO to_date;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN to_date DATE;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='quarter') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='q') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='quarter'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='q'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN q TO quarter;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN quarter VARCHAR(10);
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_type') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='type') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='training_type'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='type'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN type TO training_type;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN training_type VARCHAR(100);
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='location') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='loc') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='category'
+        ) THEN
+            ALTER TABLE public.training_records
+                ADD COLUMN category VARCHAR(100) DEFAULT 'Internal Training';
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='location'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='loc'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN loc TO location;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN location VARCHAR(255);
             END IF;
         END IF;
 
-        -- New Power Plant field. Existing records are preserved.
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='power_plant') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='power_plant'
+        ) THEN
             ALTER TABLE public.training_records ADD COLUMN power_plant VARCHAR(255);
         END IF;
 
-        -- Trainer name. Existing records remain valid with NULL/blank trainer names.
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='trainer_name') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='trainer_name'
+        ) THEN
             ALTER TABLE public.training_records ADD COLUMN trainer_name TEXT;
         END IF;
 
-        -- The deployed database may have an older training_type CHECK constraint
-        -- that rejects values such as Compliance. Replace it safely with the
-        -- current four supported values.
-        UPDATE public.training_records
-        SET training_type = CASE
-            WHEN LOWER(TRIM(training_type)) LIKE '%soft%' THEN 'Soft Skill'
-            WHEN LOWER(TRIM(training_type)) LIKE '%technical%' OR LOWER(TRIM(training_type)) = 'tech' THEN 'Technical'
-            WHEN LOWER(TRIM(training_type)) LIKE '%compliance%' THEN 'Compliance'
-            WHEN TRIM(training_type) IN ('Technical', 'Soft Skill', 'Compliance', 'Other') THEN TRIM(training_type)
-            ELSE 'Other'
-        END
-        WHERE training_type IS NOT NULL;
-
-        ALTER TABLE public.training_records
-            DROP CONSTRAINT IF EXISTS training_records_training_type_check;
-
-        ALTER TABLE public.training_records
-            ADD CONSTRAINT training_records_training_type_check
-            CHECK (
-                training_type IS NULL
-                OR training_type IN ('Technical', 'Soft Skill', 'Compliance', 'Other')
-            );
-
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participant_names') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='names_of_participants') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='participant_names'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='names_of_participants'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN names_of_participants TO participant_names;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN participant_names TEXT;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='participants_count') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='no_of_people_attended') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='participants_count'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='no_of_people_attended'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN no_of_people_attended TO participants_count;
-            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='no_of_participants') THEN
+            ELSIF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='no_of_participants'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN no_of_participants TO participants_count;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN participants_count NUMERIC(12,2) DEFAULT 0;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_hours') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='hours') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='training_hours'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='hours'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN hours TO training_hours;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN training_hours NUMERIC(12,2) DEFAULT 0;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='training_cost') THEN
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='cost') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='training_cost'
+        ) THEN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='training_records'
+                  AND column_name='cost'
+            ) THEN
                 ALTER TABLE public.training_records RENAME COLUMN cost TO training_cost;
             ELSE
                 ALTER TABLE public.training_records ADD COLUMN training_cost NUMERIC(14,2) DEFAULT 0;
             END IF;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='total_hours') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='total_hours'
+        ) THEN
             ALTER TABLE public.training_records ADD COLUMN total_hours NUMERIC(14,2) DEFAULT 0;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_by') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='created_by'
+        ) THEN
             ALTER TABLE public.training_records ADD COLUMN created_by BIGINT;
         END IF;
 
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='training_records' AND column_name='created_at') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='created_at'
+        ) THEN
             ALTER TABLE public.training_records ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
         END IF;
+
+        -- -------------------------
+        -- Safe training type migration
+        -- Drop old CHECK BEFORE changing values.
+        -- -------------------------
+        ALTER TABLE public.training_records
+            DROP CONSTRAINT IF EXISTS training_records_training_type_check;
+
+        UPDATE public.training_records
+        SET training_type = CASE
+            WHEN LOWER(TRIM(training_type)) LIKE '%japanese%' THEN 'Japanese Management Systems'
+            WHEN LOWER(TRIM(training_type)) LIKE '%soft%' THEN 'Soft Skill'
+            WHEN LOWER(TRIM(training_type)) LIKE '%technical%' OR LOWER(TRIM(training_type)) = 'tech' THEN 'Technical'
+            WHEN LOWER(TRIM(training_type)) LIKE '%compliance%' THEN 'Compliance'
+            WHEN LOWER(TRIM(training_type)) = 'other' THEN 'Other'
+            ELSE 'Other'
+        END
+        WHERE training_type IS NOT NULL;
+
+        ALTER TABLE public.training_records
+            ADD CONSTRAINT training_records_training_type_check
+            CHECK (
+                training_type IS NULL
+                OR training_type IN (
+                    'Technical',
+                    'Soft Skill',
+                    'Compliance',
+                    'Japanese Management Systems',
+                    'Other'
+                )
+            );
+
+        -- -------------------------
+        -- Safe category migration
+        -- Existing records without a category are classified as
+        -- Internal Training so all legacy data remains reportable.
+        -- -------------------------
+        ALTER TABLE public.training_records
+            DROP CONSTRAINT IF EXISTS training_records_category_check;
+
+        UPDATE public.training_records
+        SET category = CASE
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Trainings'
+            ELSE 'Internal Training'
+        END;
+
+        ALTER TABLE public.training_records
+            ADD CONSTRAINT training_records_category_check
+            CHECK (
+                category IN (
+                    'Internal Training',
+                    'External Training',
+                    'Overseas Training',
+                    'Management Trainings'
+                )
+            );
 
         UPDATE public.training_records
         SET total_hours = COALESCE(training_hours,0) * COALESCE(participants_count,0)
         WHERE total_hours IS NULL
            OR total_hours <> COALESCE(training_hours,0) * COALESCE(participants_count,0);
+
+        -- -------------------------
+        -- training_budgets columns
+        -- -------------------------
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='budget_year'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN budget_year INTEGER;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='location'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN location VARCHAR(255);
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='category'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN category VARCHAR(100);
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='budget_amount'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN budget_amount NUMERIC(14,2) DEFAULT 0;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='created_by'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN created_by BIGINT;
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_budgets'
+              AND column_name='created_at'
+        ) THEN
+            ALTER TABLE public.training_budgets ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+        END IF;
+
+        ALTER TABLE public.training_budgets
+            DROP CONSTRAINT IF EXISTS training_budgets_category_check;
+
+        UPDATE public.training_budgets
+        SET category = CASE
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
+            WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Trainings'
+            ELSE 'Internal Training'
+        END
+        WHERE category IS NULL OR TRIM(category) = ''
+           OR category NOT IN (
+                'Internal Training',
+                'External Training',
+                'Overseas Training',
+                'Management Trainings'
+           );
+
+        ALTER TABLE public.training_budgets
+            ADD CONSTRAINT training_budgets_category_check
+            CHECK (
+                category IN (
+                    'Internal Training',
+                    'External Training',
+                    'Overseas Training',
+                    'Management Trainings'
+                )
+            );
     END $$;
+
+    CREATE INDEX IF NOT EXISTS idx_training_records_date
+        ON public.training_records(from_date);
+
+    CREATE INDEX IF NOT EXISTS idx_training_records_location
+        ON public.training_records(location);
+
+    CREATE INDEX IF NOT EXISTS idx_training_records_category
+        ON public.training_records(category);
+
+    CREATE INDEX IF NOT EXISTS idx_training_budgets_year_location_category
+        ON public.training_budgets(budget_year, location, category);
     """
     run_write(migration_sql)
+
 
 try:
     init_db()
@@ -383,17 +656,14 @@ except Exception as e:
     st.stop()
 
 
-# The single administrator account requested for this application.
-# Change only if your actual username is different.
+# ============================================================
+# ADMIN
+# ============================================================
+
 ADMIN_USERNAME = "samodad"
 ADMIN_DISPLAY_NAME = "Samoda De Silva"
 
 def ensure_admin_account():
-    """Ensure the requested account has the administrator role.
-
-    This is intentionally limited to one known username and does not
-    change the role of any other account.
-    """
     try:
         run_write(
             "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'"
@@ -407,35 +677,32 @@ def ensure_admin_account():
             {"username": ADMIN_USERNAME},
         )
     except Exception:
-        # The app can still run if the deployed auth schema manages roles
-        # differently. The session-level safeguard below handles the
-        # configured administrator account in that case.
         pass
-
 
 ensure_admin_account()
 
 
 # ============================================================
-# SESSION
+# SESSION / CONSTANTS
 # ============================================================
 
-PAGES = ["Home", "Dashboard", "Data Entry", "Import Excel", "Records", "My Account"]
+PAGES = [
+    "Home",
+    "Dashboard",
+    "Data Entry",
+    "Import Excel",
+    "Records",
+    "Budget Entry",
+    "My Account",
+]
 
-# Known company sites / power plants. These are merged with database values.
-# Company power plants/sites shown in the HR training records.
-# They are exposed through the Location selector on the dashboard.
 KNOWN_LOCATIONS = [
     "HOF", "BBO", "BTO", "BKN", "EME", "MGT", "GNT",
     "HS1", "HS2", "LKM", "MVB", "ORK", "RDP",
     "UDW", "VBL", "WMB"
 ]
 
-# Kept for Data Entry / Excel compatibility. The Dashboard itself
-# intentionally uses Location as the only site/plant filter.
 KNOWN_POWER_PLANTS = KNOWN_LOCATIONS.copy()
-
-# Keep these years visible in the dashboard even when one year has no rows yet.
 SUPPORTED_YEARS = [2026, 2025, 2024]
 
 if "hr_page" not in st.session_state:
@@ -443,7 +710,6 @@ if "hr_page" not in st.session_state:
 
 
 def get_user():
-    """Return the logged-in user and enforce the configured admin account."""
     user = None
     try:
         user = current_user()
@@ -459,7 +725,6 @@ def get_user():
     try:
         user = dict(user)
     except Exception:
-        # Keep compatibility with dict-like auth objects.
         pass
 
     username = str(user.get("username", "")).strip().lower()
@@ -476,9 +741,11 @@ def set_logged_user(user):
         user = dict(user)
     except Exception:
         pass
+
     if str(user.get("username", "")).strip().lower() == ADMIN_USERNAME.lower():
         user["role"] = "admin"
         user.setdefault("full_name", ADMIN_DISPLAY_NAME)
+
     st.session_state["hr_user"] = user
     st.session_state["hr_page"] = "Home"
 
@@ -497,6 +764,14 @@ def require_user():
     return user
 
 
+def require_admin():
+    user = require_user()
+    if str(user.get("role", "user")).strip().lower() != "admin":
+        st.error("Administrator access is required for this section.")
+        st.stop()
+    return user
+
+
 def do_logout():
     try:
         logout_user()
@@ -507,9 +782,6 @@ def do_logout():
 
 # ============================================================
 # DATABASE HELPERS
-# IMPORTANT: no JOIN to users is used here. The previous query
-# failed because the deployed users table does not expose one or
-# more of full_name/name/username as referenced by that JOIN.
 # ============================================================
 
 TRAINING_SELECT = """
@@ -520,6 +792,7 @@ SELECT
     to_date,
     quarter,
     training_type,
+    category,
     location,
     power_plant,
     trainer_name,
@@ -542,16 +815,17 @@ def get_training_records():
     if df.empty:
         return df
 
-    if "power_plant" not in df.columns:
-        df["power_plant"] = "Not Specified"
-    else:
-        df["power_plant"] = df["power_plant"].fillna("Not Specified").astype(str).str.strip()
-        df.loc[df["power_plant"] == "", "power_plant"] = "Not Specified"
-
-    if "trainer_name" not in df.columns:
-        df["trainer_name"] = ""
-    else:
-        df["trainer_name"] = df["trainer_name"].fillna("").astype(str).str.strip()
+    for col, default in [
+        ("power_plant", "Not Specified"),
+        ("trainer_name", ""),
+        ("category", "Internal Training"),
+        ("location", "Not Specified"),
+    ]:
+        if col not in df.columns:
+            df[col] = default
+        else:
+            df[col] = df[col].fillna(default).astype(str).str.strip()
+            df.loc[df[col] == "", col] = default
 
     for col in ["from_date", "to_date", "created_at"]:
         if col in df.columns:
@@ -561,9 +835,9 @@ def get_training_records():
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    # Keep total hours consistent with the business rule.
-    if {"training_hours", "participants_count"}.issubset(df.columns):
-        df["calculated_total_hours"] = df["training_hours"] * df["participants_count"]
+    df["calculated_total_hours"] = (
+        df["training_hours"] * df["participants_count"]
+    )
 
     return df
 
@@ -601,6 +875,7 @@ def get_power_plants():
     ]
     return sorted(set(KNOWN_POWER_PLANTS + db_plants), key=str.upper)
 
+
 def get_existing_keys():
     rows = run_query(
         """
@@ -609,6 +884,7 @@ def get_existing_keys():
         """
     )
     keys = set()
+
     for r in rows:
         record = dict(r)
         programme = str(record.get("programme_name") or "").strip().lower()
@@ -617,7 +893,9 @@ def get_existing_keys():
         dt = pd.to_datetime(record.get("from_date"), errors="coerce")
         date_key = dt.date() if not pd.isna(dt) else None
         keys.add((programme, date_key, location, power_plant))
+
     return keys
+
 
 def insert_training_record(
     programme_name,
@@ -625,6 +903,7 @@ def insert_training_record(
     to_date,
     quarter,
     training_type,
+    category,
     location,
     power_plant,
     trainer_name,
@@ -641,6 +920,7 @@ def insert_training_record(
         "to_date": to_date,
         "quarter": quarter,
         "training_type": training_type,
+        "category": category,
         "location": location,
         "power_plant": power_plant,
         "trainer_name": trainer_name,
@@ -657,13 +937,15 @@ def insert_training_record(
                 """
                 INSERT INTO training_records (
                     programme_name, from_date, to_date, quarter,
-                    training_type, location, power_plant, trainer_name, participant_names,
+                    training_type, category, location, power_plant,
+                    trainer_name, participant_names,
                     training_cost, training_hours, participants_count,
                     total_hours, created_by
                 )
                 VALUES (
                     :programme_name, :from_date, :to_date, :quarter,
-                    :training_type, :location, :power_plant, :trainer_name, :participant_names,
+                    :training_type, :category, :location, :power_plant,
+                    :trainer_name, :participant_names,
                     :training_cost, :training_hours, :participants_count,
                     :total_hours, :created_by
                 )
@@ -678,17 +960,20 @@ def insert_training_record(
         """
         INSERT INTO training_records (
             programme_name, from_date, to_date, quarter,
-            training_type, location, power_plant, trainer_name, participant_names,
+            training_type, category, location, power_plant,
+            trainer_name, participant_names,
             training_cost, training_hours, participants_count, total_hours
         )
         VALUES (
             :programme_name, :from_date, :to_date, :quarter,
-            :training_type, :location, :power_plant, :trainer_name, :participant_names,
+            :training_type, :category, :location, :power_plant,
+            :trainer_name, :participant_names,
             :training_cost, :training_hours, :participants_count, :total_hours
         )
         """,
         params,
     )
+
 
 def update_training_record(
     record_id,
@@ -697,6 +982,7 @@ def update_training_record(
     to_date,
     quarter,
     training_type,
+    category,
     location,
     power_plant,
     trainer_name,
@@ -706,6 +992,7 @@ def update_training_record(
     participants_count,
 ):
     total_hours = float(training_hours) * float(participants_count)
+
     run_write(
         """
         UPDATE training_records
@@ -715,6 +1002,7 @@ def update_training_record(
             to_date = :to_date,
             quarter = :quarter,
             training_type = :training_type,
+            category = :category,
             location = :location,
             power_plant = :power_plant,
             trainer_name = :trainer_name,
@@ -732,6 +1020,7 @@ def update_training_record(
             "to_date": to_date,
             "quarter": quarter,
             "training_type": training_type,
+            "category": category,
             "location": location,
             "power_plant": power_plant,
             "trainer_name": trainer_name,
@@ -743,8 +1032,109 @@ def update_training_record(
         },
     )
 
+
 def delete_training_record(record_id):
-    run_write("DELETE FROM training_records WHERE id = :record_id", {"record_id": int(record_id)})
+    run_write(
+        "DELETE FROM training_records WHERE id = :record_id",
+        {"record_id": int(record_id)},
+    )
+
+
+def get_budget_records():
+    rows = run_query(
+        """
+        SELECT
+            id,
+            budget_year,
+            location,
+            category,
+            budget_amount,
+            created_by,
+            created_at
+        FROM training_budgets
+        ORDER BY budget_year DESC, location, category
+        """
+    )
+    df = pd.DataFrame([dict(r) for r in rows])
+
+    if df.empty:
+        return df
+
+    df["budget_year"] = pd.to_numeric(df["budget_year"], errors="coerce").fillna(0).astype(int)
+    df["budget_amount"] = pd.to_numeric(df["budget_amount"], errors="coerce").fillna(0)
+    df["location"] = df["location"].fillna("Not Specified").astype(str).str.strip()
+    df["category"] = df["category"].fillna("Internal Training").astype(str).str.strip()
+
+    return df
+
+
+def save_budget_record(budget_id, budget_year, location, category, budget_amount, created_by=None):
+    params = {
+        "budget_year": int(budget_year),
+        "location": str(location).strip(),
+        "category": str(category).strip(),
+        "budget_amount": float(budget_amount),
+        "created_by": created_by,
+    }
+
+    if budget_id:
+        run_write(
+            """
+            UPDATE training_budgets
+            SET
+                budget_year = :budget_year,
+                location = :location,
+                category = :category,
+                budget_amount = :budget_amount
+            WHERE id = :budget_id
+            """,
+            {**params, "budget_id": int(budget_id)},
+        )
+        return
+
+    existing = run_query(
+        """
+        SELECT id
+        FROM training_budgets
+        WHERE budget_year = :budget_year
+          AND LOWER(TRIM(location)) = LOWER(TRIM(:location))
+          AND category = :category
+        ORDER BY id
+        LIMIT 1
+        """,
+        params,
+    )
+
+    if existing:
+        existing_id = int(dict(existing[0])["id"])
+        save_budget_record(
+            existing_id,
+            budget_year,
+            location,
+            category,
+            budget_amount,
+            created_by,
+        )
+        return
+
+    run_write(
+        """
+        INSERT INTO training_budgets (
+            budget_year, location, category, budget_amount, created_by
+        )
+        VALUES (
+            :budget_year, :location, :category, :budget_amount, :created_by
+        )
+        """,
+        params,
+    )
+
+
+def delete_budget_record(budget_id):
+    run_write(
+        "DELETE FROM training_budgets WHERE id = :budget_id",
+        {"budget_id": int(budget_id)},
+    )
 
 
 # ============================================================
@@ -752,18 +1142,29 @@ def delete_training_record(record_id):
 # ============================================================
 
 COLUMN_ALIASES = {
-    "programme_name": ["name of the programme", "programme name", "program name", "programme"],
+    "programme_name": [
+        "name of the programme", "programme name", "program name", "programme"
+    ],
     "from_date": ["from date", "date", "start date"],
     "to_date": ["to date", "end date"],
     "quarter": ["q", "quarter"],
     "training_type": ["t/s", "type", "training type"],
-    "participant_names": ["names of the participants", "participant names", "participants"],
+    "category": ["category", "training category", "training type category"],
+    "participant_names": [
+        "names of the participants", "participant names", "participants"
+    ],
     "location": ["location", "loc", "site"],
     "power_plant": ["power plant", "powerplant", "plant", "plant name"],
-    "trainer_name": ["trainer name", "trainer", "trainer's name", "trainers name", "facilitator", "facilitator name"],
+    "trainer_name": [
+        "trainer name", "trainer", "trainer's name",
+        "trainers name", "facilitator", "facilitator name"
+    ],
     "training_cost": ["training cost", "cost"],
     "training_hours": ["training hours", "hours"],
-    "participants_count": ["no of people attended", "no of participants", "participants count", "number of people attended"],
+    "participants_count": [
+        "no of people attended", "no of participants",
+        "participants count", "number of people attended"
+    ],
     "total_hours": ["total hours", "total training hours"],
 }
 
@@ -776,7 +1177,11 @@ def clean_col_name(value):
 
 def detect_excel_header(raw):
     for i in range(min(25, len(raw))):
-        values = [clean_col_name(x) for x in raw.iloc[i].tolist() if pd.notna(x)]
+        values = [
+            clean_col_name(x)
+            for x in raw.iloc[i].tolist()
+            if pd.notna(x)
+        ]
         joined = " | ".join(values)
         if "name of the programme" in joined and "training hours" in joined:
             return i
@@ -785,14 +1190,17 @@ def detect_excel_header(raw):
 
 def find_source_column(columns, aliases):
     normalized = {clean_col_name(c): c for c in columns}
+
     for alias in aliases:
         if alias in normalized:
             return normalized[alias]
+
     for col in columns:
         c = clean_col_name(col)
         for alias in aliases:
             if alias in c or c in alias:
                 return col
+
     return None
 
 
@@ -806,7 +1214,8 @@ def prepare_excel_dataframe(uploaded_file):
     if header_row is None:
         raise ValueError(
             "Could not detect the training table header. "
-            "The file should contain columns such as 'Name of the Programme' and 'Training Hours'."
+            "The file should contain columns such as "
+            "'Name of the Programme' and 'Training Hours'."
         )
 
     headers = []
@@ -819,14 +1228,15 @@ def prepare_excel_dataframe(uploaded_file):
     df = raw.iloc[header_row + 1:].copy()
     df.columns = headers
 
-    programme_col = find_source_column(df.columns, COLUMN_ALIASES["programme_name"])
+    programme_col = find_source_column(
+        df.columns, COLUMN_ALIASES["programme_name"]
+    )
     if programme_col is None:
         raise ValueError("The programme-name column could not be found.")
 
     df = df[df[programme_col].notna()].copy()
     df = df[df[programme_col].astype(str).str.strip() != ""].copy()
 
-    # Rename source columns to application names.
     rename = {}
     for target, aliases in COLUMN_ALIASES.items():
         source = find_source_column(df.columns, aliases)
@@ -835,17 +1245,23 @@ def prepare_excel_dataframe(uploaded_file):
 
     df = df.rename(columns=rename)
 
-    for required in ["programme_name", "from_date", "training_type", "location", "training_cost", "training_hours", "participants_count"]:
+    for required in [
+        "programme_name", "from_date", "training_type",
+        "location", "training_cost", "training_hours",
+        "participants_count"
+    ]:
         if required not in df.columns:
             df[required] = None
 
     optional_defaults = {
         "to_date": None,
         "quarter": None,
+        "category": "Internal Training",
         "trainer_name": "",
         "participant_names": "",
         "total_hours": None,
     }
+
     for col, default in optional_defaults.items():
         if col not in df.columns:
             df[col] = default
@@ -856,38 +1272,47 @@ def prepare_excel_dataframe(uploaded_file):
 def parse_number(value, default=0.0):
     if value is None or pd.isna(value):
         return default
+
     if isinstance(value, (int, float)):
         return float(value)
+
     text = str(value).strip().replace(",", "")
     if not text:
         return default
+
     match = re.search(r"-?\d+(?:\.\d+)?", text)
     return float(match.group()) if match else default
 
 
 def infer_nearby_year(values, index, fallback_year=2026):
-    """Find the nearest explicit year in the date column."""
     for distance in range(0, 25):
         for candidate in [index - distance, index + distance]:
             if candidate < 0 or candidate >= len(values):
                 continue
+
             v = values[candidate]
+
             if isinstance(v, (datetime, date, pd.Timestamp)):
                 return pd.Timestamp(v).year
+
             text = str(v).strip()
             m = re.search(r"(20\d{2})", text)
             if m:
                 return int(m.group(1))
+
     return fallback_year
 
 
 def parse_date_value(value, default_year=2026):
     if value is None or pd.isna(value):
         return None
+
     if isinstance(value, pd.Timestamp):
         return value.date()
+
     if isinstance(value, datetime):
         return value.date()
+
     if isinstance(value, date):
         return value
 
@@ -906,7 +1331,10 @@ def parse_date_value(value, default_year=2026):
         except ValueError:
             return None
 
-    range_full = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})$", cleaned)
+    range_full = re.match(
+        r"^(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})$",
+        cleaned,
+    )
     if range_full:
         d1, _, mo, y = map(int, range_full.groups())
         try:
@@ -922,7 +1350,10 @@ def parse_date_value(value, default_year=2026):
         except ValueError:
             return None
 
-    full = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](20\d{2})$", cleaned)
+    full = re.match(
+        r"^(\d{1,2})[/-](\d{1,2})[/-](20\d{2})$",
+        cleaned,
+    )
     if full:
         d, mo, y = map(int, full.groups())
         try:
@@ -930,7 +1361,10 @@ def parse_date_value(value, default_year=2026):
         except ValueError:
             return None
 
-    first = re.search(r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?", cleaned)
+    first = re.search(
+        r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?",
+        cleaned,
+    )
     if first:
         d, mo = int(first.group(1)), int(first.group(2))
         y = int(first.group(3)) if first.group(3) else default_year
@@ -947,14 +1381,20 @@ def parse_date_range(from_value, to_value, default_year=2026):
     from_date = parse_date_value(from_value, default_year)
     to_date = parse_date_value(to_value, default_year)
 
-    text = "" if from_value is None or pd.isna(from_value) else str(from_value).strip()
+    text = (
+        ""
+        if from_value is None or pd.isna(from_value)
+        else str(from_value).strip()
+    )
+
     if not to_date and text:
         cleaned = re.sub(r"[A-Za-z]+", "", text)
 
         full_range = re.search(
             r"(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})[/-](20\d{2})",
-            cleaned
+            cleaned,
         )
+
         if full_range:
             _, d2, mo, y = full_range.groups()
             try:
@@ -965,18 +1405,69 @@ def parse_date_range(from_value, to_value, default_year=2026):
         if not to_date:
             matches = re.findall(
                 r"(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(20\d{2}))?",
-                cleaned
+                cleaned,
             )
+
             if len(matches) >= 2:
                 y = int(matches[0][2]) if matches[0][2] else default_year
                 try:
-                    to_date = date(y, int(matches[1][1]), int(matches[1][0]))
+                    to_date = date(
+                        y,
+                        int(matches[1][1]),
+                        int(matches[1][0]),
+                    )
                 except ValueError:
                     to_date = None
 
     if from_date and not to_date:
         to_date = from_date
+
     return from_date, to_date
+
+
+def normalize_training_type(value):
+    text = str(value or "").strip().lower()
+
+    if "japanese" in text:
+        return "Japanese Management Systems"
+    if "soft" in text:
+        return "Soft Skill"
+    if "technical" in text or text == "tech":
+        return "Technical"
+    if "compliance" in text:
+        return "Compliance"
+    if text == "other":
+        return "Other"
+
+    return "Other"
+
+
+def normalize_category(value):
+    text = str(value or "").strip().lower()
+
+    if "external" in text:
+        return "External Training"
+    if "overseas" in text or "over sea" in text:
+        return "Overseas Training"
+    if "management" in text:
+        return "Management Trainings"
+    if "internal" in text:
+        return "Internal Training"
+
+    return "Internal Training"
+
+
+def normalize_quarter(value, from_date):
+    text = str(value or "").strip().upper()
+
+    if text in {"Q1", "Q2", "Q3", "Q4"}:
+        return text
+
+    return (
+        f"Q{((from_date.month - 1) // 3) + 1}"
+        if from_date
+        else "Q1"
+    )
 
 
 def transform_import_rows(df):
@@ -986,17 +1477,20 @@ def transform_import_rows(df):
 
     for idx, source in df.iterrows():
         excel_row = idx + 1
+
         try:
             programme = str(source.get("programme_name") or "").strip()
             if not programme:
                 raise ValueError("Programme name is empty")
 
             year = infer_nearby_year(raw_dates, idx, fallback_year=2026)
+
             from_date, to_date = parse_date_range(
                 source.get("from_date"),
                 source.get("to_date"),
-                year
+                year,
             )
+
             if from_date is None:
                 raise ValueError("Invalid From Date")
 
@@ -1004,29 +1498,46 @@ def transform_import_rows(df):
             if not power_plant:
                 power_plant = "Not Specified"
 
-            # Location is now derived from the Power Plant in manual entry.
-            # Keep an Excel Location column when it exists for backward compatibility.
             location = str(source.get("location") or "").strip()
             if not location:
                 location = power_plant
 
             trainer_name = str(source.get("trainer_name") or "").strip()
 
-            training_hours = parse_number(source.get("training_hours"), 0)
-            participants = parse_number(source.get("participants_count"), 0)
+            training_hours = parse_number(
+                source.get("training_hours"), 0
+            )
+            participants = parse_number(
+                source.get("participants_count"), 0
+            )
             cost = parse_number(source.get("training_cost"), 0)
 
             if training_hours <= 0:
-                raise ValueError("Training Hours must be greater than 0")
+                raise ValueError(
+                    "Training Hours must be greater than 0"
+                )
 
-            participant_text = str(source.get("participant_names") or "").strip()
-            name_count = len([x for x in re.split(r"[,;]", participant_text) if x.strip()])
+            participant_text = str(
+                source.get("participant_names") or ""
+            ).strip()
 
-            if participants <= 0 or abs(participants - round(participants)) > 0.000001:
+            name_count = len(
+                [
+                    x for x in re.split(r"[,;]", participant_text)
+                    if x.strip()
+                ]
+            )
+
+            if (
+                participants <= 0
+                or abs(participants - round(participants)) > 0.000001
+            ):
                 if name_count > 0:
                     participants = float(name_count)
                 else:
-                    raise ValueError("No. of people attended is invalid")
+                    raise ValueError(
+                        "No. of people attended is invalid"
+                    )
             else:
                 participants = float(round(participants))
 
@@ -1037,8 +1548,15 @@ def transform_import_rows(df):
                     "programme_name": programme,
                     "from_date": from_date,
                     "to_date": to_date,
-                    "quarter": normalize_quarter(source.get("quarter"), from_date),
-                    "training_type": normalize_training_type(source.get("training_type")),
+                    "quarter": normalize_quarter(
+                        source.get("quarter"), from_date
+                    ),
+                    "training_type": normalize_training_type(
+                        source.get("training_type")
+                    ),
+                    "category": normalize_category(
+                        source.get("category")
+                    ),
                     "trainer_name": trainer_name,
                     "participant_names": participant_text,
                     "location": location,
@@ -1049,36 +1567,30 @@ def transform_import_rows(df):
                     "total_hours": total_hours,
                 }
             )
+
         except Exception as e:
-            errors.append(f"Excel row {excel_row + 4}: {e}")
+            errors.append(
+                f"Excel row {excel_row + 4}: {e}"
+            )
 
     return pd.DataFrame(rows), errors
 
 
-def normalize_training_type(value):
-    text = str(value or "").strip().lower()
-    if "soft" in text:
-        return "Soft Skill"
-    if "technical" in text or text == "tech":
-        return "Technical"
-    if "compliance" in text:
-        return "Compliance"
-    return "Other"
-
-
-def normalize_quarter(value, from_date):
-    text = str(value or "").strip().upper()
-    if text in {"Q1", "Q2", "Q3", "Q4"}:
-        return text
-    return f"Q{((from_date.month - 1) // 3) + 1}" if from_date else "Q1"
-
+# ============================================================
+# SIDEBAR
+# ============================================================
 
 def render_sidebar():
     user = get_user()
     if not user:
         return
 
-    full_name = user.get("full_name") or user.get("name") or user.get("username") or "User"
+    full_name = (
+        user.get("full_name")
+        or user.get("name")
+        or user.get("username")
+        or "User"
+    )
     username = user.get("username", "")
     role = user.get("role", "user")
 
@@ -1092,26 +1604,38 @@ def render_sidebar():
             """,
             unsafe_allow_html=True,
         )
+
         st.markdown(
             f"""
             <div class="sidebar-user">
-                <div class="sidebar-user-name">{html.escape(str(full_name))}</div>
-                <div class="sidebar-user-role">@{html.escape(str(username))} · {html.escape(str(role).title())}</div>
+                <div class="sidebar-user-name">
+                    {html.escape(str(full_name))}
+                </div>
+                <div class="sidebar-user-role">
+                    @{html.escape(str(username))} ·
+                    {html.escape(str(role).title())}
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="sidebar-section">Navigation</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="sidebar-section">Navigation</div>',
+            unsafe_allow_html=True,
+        )
+
+        icons = {
+            "Home": "🏠",
+            "Dashboard": "📊",
+            "Data Entry": "📝",
+            "Import Excel": "📥",
+            "Records": "📁",
+            "Budget Entry": "💰",
+            "My Account": "👤",
+        }
 
         for page in PAGES:
-            icons = {
-                "Home": "🏠",
-                "Dashboard": "📊",
-                "Data Entry": "📝",
-                "Import Excel": "📥",
-                "Records": "📁",
-                "My Account": "👤",
-            }
             if st.button(
                 f"{icons[page]}   {page}",
                 key=f"nav_{page.lower().replace(' ', '_')}",
@@ -1120,8 +1644,16 @@ def render_sidebar():
                 st.session_state.hr_page = page
                 st.rerun()
 
-        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-        if st.button("Log out", key="sidebar_logout", use_container_width=True):
+        st.markdown(
+            '<div class="sidebar-divider"></div>',
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            "Log out",
+            key="sidebar_logout",
+            use_container_width=True,
+        ):
             do_logout()
 
 
@@ -1130,67 +1662,150 @@ def render_sidebar():
 # ============================================================
 
 def render_login():
-    st.markdown('<div class="app-title">📊 HR Training Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="app-subtitle">Training management system — sign in to continue.</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="app-title">📊 HR Training Dashboard</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="app-subtitle">'
+        'Training management system — sign in to continue.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     _, center, _ = st.columns([1, 1.05, 1])
+
     with center:
-        login_tab, signup_tab = st.tabs(["🔐 Log in", "👤 Create account"])
+        login_tab, signup_tab = st.tabs(
+            ["🔐 Log in", "👤 Create account"]
+        )
 
         with login_tab:
-            st.markdown('<div class="auth-heading">Welcome back</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="auth-heading">Welcome back</div>',
+                unsafe_allow_html=True,
+            )
+
             with st.form("login_form"):
-                identifier = st.text_input("Username or email", placeholder="Enter username or email")
-                password = st.text_input("Password", type="password", placeholder="Enter password")
-                submitted = st.form_submit_button("Log in", type="primary", use_container_width=True)
+                identifier = st.text_input(
+                    "Username or email",
+                    placeholder="Enter username or email",
+                )
+                password = st.text_input(
+                    "Password",
+                    type="password",
+                    placeholder="Enter password",
+                )
+                submitted = st.form_submit_button(
+                    "Log in",
+                    type="primary",
+                    use_container_width=True,
+                )
 
             if submitted:
                 if not identifier.strip() or not password:
-                    st.error("Please enter both username/email and password.")
+                    st.error(
+                        "Please enter both username/email and password."
+                    )
                 else:
                     try:
-                        user = authenticate(identifier.strip(), password)
+                        user = authenticate(
+                            identifier.strip(), password
+                        )
                         if user:
                             login_user(user)
                             set_logged_user(user)
                             st.rerun()
                         else:
-                            st.error("Invalid username/email or password.")
+                            st.error(
+                                "Invalid username/email or password."
+                            )
                     except Exception:
-                        st.error("Unable to log in. Please try again.")
+                        st.error(
+                            "Unable to log in. Please try again."
+                        )
 
         with signup_tab:
-            st.markdown('<div class="auth-heading">Create your account</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="auth-heading">'
+                'Create your account'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
             with st.form("signup_form"):
-                full_name = st.text_input("Full name", placeholder="e.g. Samoda De Silva")
-                username = st.text_input("Username", placeholder="e.g. samoda")
-                email = st.text_input("Email", placeholder="name@company.com")
-                password = st.text_input("Password", type="password", placeholder="Minimum 8 characters")
-                confirm = st.text_input("Confirm password", type="password")
-                submitted = st.form_submit_button("Create account", type="primary", use_container_width=True)
+                full_name = st.text_input(
+                    "Full name",
+                    placeholder="e.g. Samoda De Silva",
+                )
+                username = st.text_input(
+                    "Username",
+                    placeholder="e.g. samoda",
+                )
+                email = st.text_input(
+                    "Email",
+                    placeholder="name@company.com",
+                )
+                password = st.text_input(
+                    "Password",
+                    type="password",
+                    placeholder="Minimum 8 characters",
+                )
+                confirm = st.text_input(
+                    "Confirm password",
+                    type="password",
+                )
+                submitted = st.form_submit_button(
+                    "Create account",
+                    type="primary",
+                    use_container_width=True,
+                )
 
             if submitted:
                 full_name = full_name.strip()
                 username = username.strip().lower()
                 email = email.strip().lower()
+
                 if not full_name:
                     st.error("Please enter your full name.")
-                elif not re.fullmatch(r"[a-z0-9._-]{3,50}", username):
-                    st.error("Username must contain 3–50 lowercase letters, numbers, dots, underscores or hyphens.")
-                elif not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-                    st.error("Please enter a valid email address.")
+                elif not re.fullmatch(
+                    r"[a-z0-9._-]{3,50}", username
+                ):
+                    st.error(
+                        "Username must contain 3–50 lowercase "
+                        "letters, numbers, dots, underscores or hyphens."
+                    )
+                elif not re.fullmatch(
+                    r"[^@\s]+@[^@\s]+\.[^@\s]+", email
+                ):
+                    st.error(
+                        "Please enter a valid email address."
+                    )
                 elif len(password) < 8:
-                    st.error("Password must contain at least 8 characters.")
+                    st.error(
+                        "Password must contain at least 8 characters."
+                    )
                 elif password != confirm:
                     st.error("Passwords do not match.")
                 else:
                     try:
-                        create_user(username=username, email=email, full_name=full_name, password=password)
-                        st.success("Account created successfully. Please use the Log in tab.")
+                        create_user(
+                            username=username,
+                            email=email,
+                            full_name=full_name,
+                            password=password,
+                        )
+                        st.success(
+                            "Account created successfully. "
+                            "Please use the Log in tab."
+                        )
                     except ValueError as e:
                         st.error(str(e))
                     except Exception:
-                        st.error("Unable to create the account. Please check the database connection.")
+                        st.error(
+                            "Unable to create the account. "
+                            "Please check the database connection."
+                        )
 
 
 # ============================================================
@@ -1199,15 +1814,25 @@ def render_login():
 
 def render_home():
     user = require_user()
-    full_name = user.get("full_name") or user.get("name") or user.get("username") or "User"
+
+    full_name = (
+        user.get("full_name")
+        or user.get("name")
+        or user.get("username")
+        or "User"
+    )
 
     st.markdown(
         f"""
         <div class="welcome-box">
-            <div class="welcome-title">📊 HR Training Dashboard</div>
+            <div class="welcome-title">
+                📊 HR Training Dashboard
+            </div>
             <div class="welcome-text">
-                Welcome back, <strong>{html.escape(str(full_name))}</strong> 👋<br>
-                Manage training programmes, workers, costs, training hours and company-wide performance.
+                Welcome back,
+                <strong>{html.escape(str(full_name))}</strong> 👋<br>
+                Manage training programmes, workers, costs,
+                budgets, training hours and company-wide performance.
             </div>
         </div>
         """,
@@ -1215,30 +1840,65 @@ def render_home():
     )
 
     c1, c2, c3 = st.columns(3)
+
     cards = [
-        (c1, "📊", "Dashboard", "View KPIs, trends, costs, workers and training performance.", "Dashboard"),
-        (c2, "📝", "Data Entry", "Add a new training programme and calculate total training hours automatically.", "Data Entry"),
-        (c3, "📥", "Import Excel", "Import your 2024–2026 training workbook and open the dashboard.", "Import Excel"),
+        (
+            c1, "📊", "Dashboard",
+            "View KPIs, training trends, costs and Budget vs Actuals.",
+            "Dashboard",
+        ),
+        (
+            c2, "📝", "Data Entry",
+            "Add a training programme with Type and Category.",
+            "Data Entry",
+        ),
+        (
+            c3, "💰", "Budget Entry",
+            "Enter annual training budgets by Location and Category.",
+            "Budget Entry",
+        ),
     ]
-    for col, icon, title, text, target in cards:
+
+    for col, icon, title, description, target in cards:
         with col:
             with st.container(border=True):
-                st.markdown(f'<div style="font-size:30px">{icon}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="font-size:20px;font-weight:800;color:#083b66">{title}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="small-note">{text}</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="font-size:30px">{icon}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div style="font-size:20px;font-weight:800;'
+                    f'color:#083b66">{title}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div class="small-note">{description}</div>',
+                    unsafe_allow_html=True,
+                )
                 st.write("")
-                if st.button(f"Open {title} →", key=f"home_{target}", type="primary", use_container_width=True):
+
+                if st.button(
+                    f"Open {title} →",
+                    key=f"home_{target}",
+                    type="primary",
+                    use_container_width=True,
+                ):
                     st.session_state.hr_page = target
                     st.rerun()
 
     df = get_training_records()
     st.write("")
+
     if df.empty:
-        st.info("No training records are in the database yet. Use Import Excel or Data Entry.")
+        st.info(
+            "No training records are in the database yet. "
+            "Use Import Excel or Data Entry."
+        )
     else:
-        total_hours = float((df["training_hours"] * df["participants_count"]).sum())
+        total_hours = float(df["calculated_total_hours"].sum())
         total_workers = float(df["participants_count"].sum())
         total_cost = float(df["training_cost"].sum())
+
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Programmes", f"{len(df):,}")
         m2.metric("Workers Attended", f"{total_workers:,.0f}")
@@ -1252,15 +1912,27 @@ def render_home():
 
 def render_data_entry():
     user = require_user()
+
     st.title("Training Data Entry")
-    st.caption("Enter one training programme. Total training hours are calculated automatically.")
+    st.caption(
+        "Enter one training programme. "
+        "Total training hours are calculated automatically."
+    )
 
     st.markdown(
         """
         <div class="formula-box">
-            <div class="formula-title">Training Hours Calculation</div>
-            <div class="formula-text">Total Training Hours = Training Hours per Worker × No. of Workers Attended</div>
-            <div class="small-note">Example: 3 hours × 10 workers = 30 total training hours (person-hours).</div>
+            <div class="formula-title">
+                Training Hours Calculation
+            </div>
+            <div class="formula-text">
+                Total Training Hours =
+                Training Hours per Worker × No. of Workers Attended
+            </div>
+            <div class="small-note">
+                Example: 3 hours × 10 workers =
+                30 total training hours (person-hours).
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1274,38 +1946,54 @@ def render_data_entry():
         with left:
             programme = st.text_input(
                 "Name of the Programme *",
-                placeholder="e.g. Leadership Development Programme"
+                placeholder="e.g. Leadership Development Programme",
             )
 
             trainer_name = st.text_input(
                 "Trainer's Name *",
-                placeholder="e.g. Roshan Siriwardana"
+                placeholder="e.g. Roshan Siriwardana",
             )
 
-            from_date = st.date_input("From Date *", value=date.today())
-            to_date = st.date_input("To Date *", value=date.today())
+            from_date = st.date_input(
+                "From Date *",
+                value=date.today(),
+            )
+
+            to_date = st.date_input(
+                "To Date *",
+                value=date.today(),
+            )
 
             training_type = st.selectbox(
                 "Type *",
-                ["Technical", "Soft Skill", "Compliance", "Other"]
+                TRAINING_TYPES,
             )
 
-            quarter = st.selectbox("Quarter *", ["Q1", "Q2", "Q3", "Q4"])
+            category = st.selectbox(
+                "Category *",
+                TRAINING_CATEGORIES,
+            )
+
+            quarter = st.selectbox(
+                "Quarter *",
+                ["Q1", "Q2", "Q3", "Q4"],
+            )
 
         with right:
-            # Power Plant is the single site/plant selector.
-            # Location is automatically stored as the selected power plant
-            # so the dashboard can continue using Location as its only filter.
             plant_mode = st.selectbox(
                 "Power Plant *",
-                ["No Power Plant / Not Applicable"] + power_plants + ["+ Add new power plant"],
+                [
+                    "No Power Plant / Not Applicable"
+                ] + power_plants + [
+                    "+ Add new power plant"
+                ],
                 key="entry_plant_mode",
             )
 
             if plant_mode == "+ Add new power plant":
                 power_plant = st.text_input(
                     "New power plant name *",
-                    placeholder="e.g. BBO"
+                    placeholder="e.g. BBO",
                 )
             elif plant_mode == "No Power Plant / Not Applicable":
                 power_plant = "Not Specified"
@@ -1316,38 +2004,49 @@ def render_data_entry():
                 "Training Hours per Worker *",
                 min_value=0.0,
                 step=0.5,
-                format="%.2f"
+                format="%.2f",
             )
 
             participants = st.number_input(
                 "No. of Workers Attended *",
                 min_value=0,
                 step=1,
-                format="%d"
+                format="%d",
             )
 
             cost = st.number_input(
                 "Training Cost (Rs.)",
                 min_value=0.0,
                 step=1000.0,
-                format="%.2f"
+                format="%.2f",
             )
 
         participant_names = st.text_area(
             "Names of the Participants",
-            placeholder="Optional — separate names with commas"
+            placeholder="Optional — separate names with commas",
         )
 
-        total_hours = float(training_hours) * float(participants)
+        total_hours = (
+            float(training_hours) * float(participants)
+        )
+
         st.markdown(
-            f"<div class='formula-box'><div class='formula-text'>{training_hours:,.2f} hours × {participants:,.1f} workers = {total_hours:,.2f} total training hours</div></div>",
+            f"""
+            <div class='formula-box'>
+                <div class='formula-text'>
+                    {training_hours:,.2f} hours ×
+                    {participants:,.1f} workers =
+                    {total_hours:,.2f} total training hours
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
         save = st.button(
             "Save Training Record",
             type="primary",
-            use_container_width=True
+            use_container_width=True,
         )
 
     if save:
@@ -1355,7 +2054,6 @@ def render_data_entry():
         trainer_name = trainer_name.strip()
         power_plant = power_plant.strip()
 
-        # Power Plant is now the source for Location.
         location = power_plant
 
         if not programme:
@@ -1371,15 +2069,21 @@ def render_data_entry():
             return
 
         if to_date < from_date:
-            st.error("To Date cannot be earlier than From Date.")
+            st.error(
+                "To Date cannot be earlier than From Date."
+            )
             return
 
         if training_hours <= 0:
-            st.error("Training Hours per Worker must be greater than 0.")
+            st.error(
+                "Training Hours per Worker must be greater than 0."
+            )
             return
 
         if participants <= 0:
-            st.error("No. of Workers Attended must be greater than 0.")
+            st.error(
+                "No. of Workers Attended must be greater than 0."
+            )
             return
 
         try:
@@ -1389,6 +2093,7 @@ def render_data_entry():
                 to_date=to_date,
                 quarter=quarter,
                 training_type=training_type,
+                category=category,
                 location=location,
                 power_plant=power_plant,
                 trainer_name=trainer_name,
@@ -1399,26 +2104,48 @@ def render_data_entry():
                 total_hours=total_hours,
                 created_by=(user or {}).get("id"),
             )
-            st.success("Training record saved successfully.")
+
+            st.success(
+                "Training record saved successfully."
+            )
             st.session_state.hr_page = "Dashboard"
             st.rerun()
+
         except Exception as e:
             st.error("Unable to save the training record.")
             with st.expander("Technical details"):
                 st.exception(e)
 
 
+# ============================================================
+# IMPORT EXCEL
+# ============================================================
+
 def render_import_excel():
     user = require_user()
+
     st.title("Import Excel")
-    st.caption("Import the HR Training Records workbook, recalculate total hours, and open the dashboard.")
+    st.caption(
+        "Import the HR Training Records workbook, "
+        "recalculate total hours, and open the dashboard."
+    )
 
     st.markdown(
         """
         <div class="formula-box">
-            <div class="formula-title">Automatic Total Hours Rule</div>
-            <div class="formula-text">Total Training Hours = Training Hours per Worker × No. of Workers Attended</div>
-            <div class="small-note">The Excel "Total Hours" column is not trusted. The system recalculates it for every imported row.</div>
+            <div class="formula-title">
+                Automatic Total Hours Rule
+            </div>
+            <div class="formula-text">
+                Total Training Hours =
+                Training Hours per Worker × No. of Workers Attended
+            </div>
+            <div class="small-note">
+                The Excel Total Hours value is not trusted.
+                The system recalculates it for every imported row.
+                If Category is missing, the record is classified as
+                Internal Training.
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1427,78 +2154,146 @@ def render_import_excel():
     uploaded = st.file_uploader(
         "Choose the Excel file",
         type=["xlsx", "xls", "csv"],
-        key="training_import_file"
+        key="training_import_file",
     )
+
     if uploaded is None:
-        st.info("Upload the HR Training workbook to continue.")
+        st.info(
+            "Upload the HR Training workbook to continue."
+        )
         return
 
     try:
-        source_df, header_row = prepare_excel_dataframe(uploaded)
+        source_df, header_row = prepare_excel_dataframe(
+            uploaded
+        )
+
         st.success(
-            f"File loaded successfully — {len(source_df):,} training rows detected. "
+            f"File loaded successfully — "
+            f"{len(source_df):,} training rows detected. "
             f"Header row: {header_row + 1}."
         )
 
-        cleaned, validation_errors = transform_import_rows(source_df)
+        if "category" not in source_df.columns:
+            st.info(
+                "No Category column was found. "
+                "Imported records will use Internal Training."
+            )
+
+        cleaned, validation_errors = transform_import_rows(
+            source_df
+        )
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Rows detected", f"{len(source_df):,}")
-        c2.metric("Valid rows", f"{len(cleaned):,}")
-        c3.metric("Rows with issues", f"{len(validation_errors):,}")
+
+        c1.metric(
+            "Rows detected",
+            f"{len(source_df):,}",
+        )
+        c2.metric(
+            "Valid rows",
+            f"{len(cleaned):,}",
+        )
+        c3.metric(
+            "Rows with issues",
+            f"{len(validation_errors):,}",
+        )
         c4.metric(
             "Calculated Hours",
-            f"{cleaned['total_hours'].sum():,.1f}" if not cleaned.empty else "0.0"
+            (
+                f"{cleaned['total_hours'].sum():,.1f}"
+                if not cleaned.empty
+                else "0.0"
+            ),
         )
 
         if not cleaned.empty:
             detected_years = sorted(
-                pd.to_datetime(cleaned["from_date"], errors="coerce")
-                .dt.year.dropna().astype(int).unique().tolist()
+                pd.to_datetime(
+                    cleaned["from_date"],
+                    errors="coerce",
+                )
+                .dt.year.dropna()
+                .astype(int)
+                .unique()
+                .tolist()
             )
+
             if detected_years:
                 st.info(
                     "Detected training years in this Excel file: "
                     + ", ".join(map(str, detected_years))
                 )
-            else:
-                st.warning("No valid training years were detected in this Excel file.")
 
         if validation_errors:
-            with st.expander(f"Review {len(validation_errors)} validation issue(s)"):
-                st.code("\n".join(validation_errors[:50]))
+            with st.expander(
+                f"Review {len(validation_errors)} validation issue(s)"
+            ):
+                st.code(
+                    "\n".join(validation_errors[:50])
+                )
 
         if cleaned.empty:
-            st.error("No valid training records were found in this file.")
+            st.error(
+                "No valid training records were found in this file."
+            )
             return
 
         if "total_hours" in source_df.columns:
-            source_total = pd.to_numeric(source_df["total_hours"], errors="coerce")
-            source_hours = pd.to_numeric(source_df["training_hours"], errors="coerce")
-            source_people = pd.to_numeric(source_df["participants_count"], errors="coerce")
+            source_total = pd.to_numeric(
+                source_df["total_hours"],
+                errors="coerce",
+            )
+            source_hours = pd.to_numeric(
+                source_df["training_hours"],
+                errors="coerce",
+            )
+            source_people = pd.to_numeric(
+                source_df["participants_count"],
+                errors="coerce",
+            )
+
             calculated = source_hours * source_people
-            mismatch_count = int(((source_total - calculated).abs() > 0.001).sum())
+
+            mismatch_count = int(
+                ((source_total - calculated).abs() > 0.001).sum()
+            )
         else:
             mismatch_count = 0
 
         if mismatch_count:
             st.warning(
-                f"{mismatch_count} row(s) have an Excel Total Hours value that does not match "
-                f"Training Hours × Workers. The system will use the calculated value."
+                f"{mismatch_count} row(s) have an Excel "
+                f"Total Hours value that does not match "
+                f"Training Hours × Workers. "
+                f"The system will use the calculated value."
             )
 
         st.subheader("Cleaned import preview")
+
         preview = cleaned.copy()
-        preview["from_date"] = pd.to_datetime(preview["from_date"]).dt.strftime("%Y-%m-%d")
-        preview["to_date"] = pd.to_datetime(preview["to_date"]).dt.strftime("%Y-%m-%d")
+        preview["from_date"] = pd.to_datetime(
+            preview["from_date"]
+        ).dt.strftime("%Y-%m-%d")
+        preview["to_date"] = pd.to_datetime(
+            preview["to_date"]
+        ).dt.strftime("%Y-%m-%d")
 
         st.dataframe(
             preview[
                 [
-                    "programme_name", "from_date", "to_date", "quarter",
-                    "training_type", "location", "power_plant",
-                    "training_cost", "training_hours",
-                    "participants_count", "total_hours"
+                    "programme_name",
+                    "from_date",
+                    "to_date",
+                    "quarter",
+                    "training_type",
+                    "category",
+                    "trainer_name",
+                    "location",
+                    "training_cost",
+                    "training_hours",
+                    "participants_count",
+                    "total_hours",
                 ]
             ],
             use_container_width=True,
@@ -1509,14 +2304,15 @@ def render_import_excel():
         st.divider()
         st.subheader("Import into Training Records")
         st.caption(
-            "Existing records with the same Programme + From Date + Location + Power Plant "
-            "are skipped to prevent duplicate imports."
+            "Existing records with the same Programme + From Date "
+            "+ Location + Power Plant are skipped to prevent "
+            "duplicate imports."
         )
 
         if st.button(
             "Import Excel & Open Dashboard",
             type="primary",
-            use_container_width=True
+            use_container_width=True,
         ):
             existing_keys = get_existing_keys()
             inserted = 0
@@ -1525,10 +2321,16 @@ def render_import_excel():
 
             for _, row in cleaned.iterrows():
                 key = (
-                    str(row["programme_name"]).strip().lower(),
+                    str(row["programme_name"])
+                    .strip()
+                    .lower(),
                     row["from_date"],
-                    str(row["location"]).strip().lower(),
-                    str(row["power_plant"]).strip().lower(),
+                    str(row["location"])
+                    .strip()
+                    .lower(),
+                    str(row["power_plant"])
+                    .strip()
+                    .lower(),
                 )
 
                 if key in existing_keys:
@@ -1542,6 +2344,7 @@ def render_import_excel():
                         to_date=row["to_date"],
                         quarter=row["quarter"],
                         training_type=row["training_type"],
+                        category=row["category"],
                         location=row["location"],
                         power_plant=row["power_plant"],
                         trainer_name=row["trainer_name"],
@@ -1552,27 +2355,46 @@ def render_import_excel():
                         total_hours=row["total_hours"],
                         created_by=(user or {}).get("id"),
                     )
+
                     inserted += 1
                     existing_keys.add(key)
+
                 except Exception as e:
-                    failed.append(f"{row['programme_name']}: {e}")
+                    failed.append(
+                        f"{row['programme_name']}: {e}"
+                    )
 
             st.session_state["last_import_summary"] = {
                 "inserted": inserted,
                 "skipped": skipped,
                 "failed": len(failed),
-                "calculated_hours": float(cleaned["total_hours"].sum()),
+                "calculated_hours": float(
+                    cleaned["total_hours"].sum()
+                ),
             }
 
             if failed:
-                st.session_state["last_import_errors"] = failed[:30]
+                st.session_state["last_import_errors"] = (
+                    failed[:30]
+                )
 
             if inserted:
-                st.success(f"{inserted:,} training record(s) imported successfully.")
+                st.success(
+                    f"{inserted:,} training record(s) "
+                    f"imported successfully."
+                )
+
             if skipped:
-                st.info(f"{skipped:,} existing record(s) skipped to prevent duplicates.")
+                st.info(
+                    f"{skipped:,} existing record(s) "
+                    f"skipped to prevent duplicates."
+                )
+
             if failed:
-                st.error(f"{len(failed):,} record(s) could not be imported.")
+                st.error(
+                    f"{len(failed):,} record(s) "
+                    f"could not be imported."
+                )
                 with st.expander("Import errors"):
                     st.code("\n".join(failed[:30]))
 
@@ -1580,64 +2402,89 @@ def render_import_excel():
             st.rerun()
 
     except Exception as e:
-        st.error("The selected Excel file could not be processed.")
+        st.error(
+            "The selected Excel file could not be processed."
+        )
         with st.expander("Technical details"):
             st.exception(e)
 
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
 def render_dashboard():
     require_user()
-    st.title("Training Dashboard")
-    st.caption("Training performance based on imported and manually entered records.")
 
-    summary = st.session_state.pop("last_import_summary", None)
+    st.title("Training Dashboard")
+    st.caption(
+        "Training performance, budget and actual expenditure."
+    )
+
+    summary = st.session_state.pop(
+        "last_import_summary", None
+    )
+
     if summary:
         st.markdown(
             f"""
             <div class="success-box">
                 <strong>Excel import completed.</strong><br>
-                Imported: {summary['inserted']:,} · Skipped duplicates: {summary['skipped']:,} · Failed: {summary['failed']:,}<br>
-                Recalculated total training hours: {summary['calculated_hours']:,.1f}
+                Imported: {summary['inserted']:,} ·
+                Skipped duplicates: {summary['skipped']:,} ·
+                Failed: {summary['failed']:,}<br>
+                Recalculated total training hours:
+                {summary['calculated_hours']:,.1f}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     df = get_training_records()
+
     if df.empty:
-        st.info("No training records are available. Import the Excel file or add a record from Data Entry.")
+        st.info(
+            "No training records are available. "
+            "Import the Excel file or add a record from Data Entry."
+        )
         return
 
-    df["calculated_total_hours"] = (
-        pd.to_numeric(df["training_hours"], errors="coerce").fillna(0)
-        * pd.to_numeric(df["participants_count"], errors="coerce").fillna(0)
-    )
-
     # ------------------------------------------------------------
-    # FILTERS
-    # Location is the only plant/site filter.
+    # MAIN FILTERS
     # ------------------------------------------------------------
     with st.container(border=True):
-        f1, f2, f3, f4, f5 = st.columns([1.35, 1.05, 1.10, 1.15, 1.10])
+        f1, f2, f3, f4, f5, f6 = st.columns(
+            [1.25, 1.0, 1.05, 1.2, 1.25, 1.2]
+        )
 
         locations = ["All Locations"] + sorted(
             set(
                 KNOWN_LOCATIONS
-                + df["location"].dropna().astype(str).str.strip().tolist()
+                + df["location"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .tolist()
             ),
             key=str.upper,
         )
+
         selected_location = f1.selectbox(
             "Location",
             locations,
             key="dash_location",
         )
 
-        # Always show 2026, 2025 and 2024, plus any other year
-        # that exists in the database.
         years_in_data = sorted(
-            df["from_date"].dropna().dt.year.astype(int).unique().tolist(),
+            df["from_date"]
+            .dropna()
+            .dt.year
+            .astype(int)
+            .unique()
+            .tolist(),
             reverse=True,
         )
+
         years = []
         for y in SUPPORTED_YEARS + years_in_data:
             if y not in years:
@@ -1650,25 +2497,51 @@ def render_dashboard():
         )
 
         quarters = ["All Quarters"] + [
-            q for q in ["Q1", "Q2", "Q3", "Q4"]
-            if q in set(df["quarter"].dropna().astype(str))
+            q
+            for q in ["Q1", "Q2", "Q3", "Q4"]
+            if q in set(
+                df["quarter"]
+                .dropna()
+                .astype(str)
+            )
         ]
+
         selected_quarter = f3.selectbox(
             "Quarter",
             quarters,
             key="dash_quarter",
         )
 
-        types_in_data = sorted(
-            df["training_type"].dropna().astype(str).unique().tolist()
-        )
+        types_in_data = [
+            x for x in TRAINING_TYPES
+            if x in set(
+                df["training_type"]
+                .dropna()
+                .astype(str)
+            )
+        ]
+
         selected_type = f4.selectbox(
             "Training Type",
             ["All Types"] + types_in_data,
             key="dash_type",
         )
 
-        # Display month names rather than 1–12.
+        categories_in_data = [
+            x for x in TRAINING_CATEGORIES
+            if x in set(
+                df["category"]
+                .dropna()
+                .astype(str)
+            )
+        ]
+
+        selected_category = f5.selectbox(
+            "Category",
+            ["All Categories"] + categories_in_data,
+            key="dash_category",
+        )
+
         month_options = {
             "All Months": None,
             "January": 1,
@@ -1684,7 +2557,8 @@ def render_dashboard():
             "November": 11,
             "December": 12,
         }
-        selected_month = f5.selectbox(
+
+        selected_month = f6.selectbox(
             "Month",
             list(month_options.keys()),
             key="dash_month",
@@ -1694,12 +2568,14 @@ def render_dashboard():
 
     if selected_location != "All Locations":
         filtered = filtered[
-            filtered["location"].astype(str).str.strip() == selected_location
+            filtered["location"].astype(str).str.strip()
+            == selected_location
         ]
 
     if selected_year != "All Years":
         filtered = filtered[
-            filtered["from_date"].dt.year == int(selected_year)
+            filtered["from_date"].dt.year
+            == int(selected_year)
         ]
 
     if selected_quarter != "All Quarters":
@@ -1712,201 +2588,610 @@ def render_dashboard():
             filtered["training_type"] == selected_type
         ]
 
+    if selected_category != "All Categories":
+        filtered = filtered[
+            filtered["category"] == selected_category
+        ]
+
     month_number = month_options[selected_month]
     if month_number is not None:
         filtered = filtered[
-            filtered["from_date"].dt.month == int(month_number)
+            filtered["from_date"].dt.month
+            == int(month_number)
         ]
 
     if filtered.empty:
-        st.warning("No records match the selected filters.")
-        return
-
-    total_hours = float(filtered["calculated_total_hours"].sum())
-    programmes = int(len(filtered))
-    workers = float(filtered["participants_count"].sum())
-    total_cost = float(filtered["training_cost"].sum())
-    avg_hours_per_programme = (
-        total_hours / programmes if programmes else 0
-    )
-    avg_hours_per_worker = (
-        total_hours / workers if workers else 0
-    )
-
-    # ------------------------------------------------------------
-    # KPI CARDS
-    # Extra width for Avg. Hours / Programme and Training Cost.
-    # ------------------------------------------------------------
-    st.write("")
-    k = st.columns([1.35, 1.00, 1.12, 1.42, 1.45, 1.00])
-
-    k[0].metric("Training Programmes", f"{programmes:,}")
-    k[1].metric("Workers Attended", f"{workers:,.0f}")
-    k[2].metric("Total Training Hours", f"{total_hours:,.1f}")
-    k[3].metric(
-        "Avg. Hours / Programme",
-        f"{avg_hours_per_programme:,.1f}",
-    )
-    k[4].metric("Training Cost", f"Rs. {total_cost:,.0f}")
-    k[5].metric("Hours / Worker", f"{avg_hours_per_worker:,.1f}")
-
-    st.write("")
-
-    # ------------------------------------------------------------
-    # CHARTS
-    # Monthly chart uses month names while retaining chronological
-    # ordering.
-    # ------------------------------------------------------------
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.subheader("Monthly Training Hours")
-
-        monthly = (
-            filtered.assign(
-                month_num=filtered["from_date"].dt.month,
-                month_name=filtered["from_date"].dt.month_name(),
-                year=filtered["from_date"].dt.year,
-            )
-            .groupby(
-                ["year", "month_num", "month_name"],
-                as_index=False,
-            )["calculated_total_hours"]
-            .sum()
-            .sort_values(["year", "month_num"])
+        st.warning(
+            "No records match the selected filters."
+        )
+    else:
+        total_hours = float(
+            filtered["calculated_total_hours"].sum()
+        )
+        programmes = int(len(filtered))
+        workers = float(
+            filtered["participants_count"].sum()
+        )
+        total_cost = float(
+            filtered["training_cost"].sum()
         )
 
-        if not monthly.empty:
-            monthly["Month"] = monthly.apply(
-                lambda r: (
-                    f"{r['month_name']} {int(r['year'])}"
-                    if filtered["from_date"].dt.year.nunique() > 1
-                    else r["month_name"]
-                ),
-                axis=1,
+        avg_hours_per_programme = (
+            total_hours / programmes
+            if programmes
+            else 0
+        )
+
+        avg_hours_per_worker = (
+            total_hours / workers
+            if workers
+            else 0
+        )
+
+        st.write("")
+
+        k = st.columns(
+            [1.35, 1.0, 1.12, 1.42, 1.45, 1.0]
+        )
+
+        k[0].metric(
+            "Training Programmes",
+            f"{programmes:,}",
+        )
+        k[1].metric(
+            "Workers Attended",
+            f"{workers:,.0f}",
+        )
+        k[2].metric(
+            "Total Training Hours",
+            f"{total_hours:,.1f}",
+        )
+        k[3].metric(
+            "Avg. Hours / Programme",
+            f"{avg_hours_per_programme:,.1f}",
+        )
+        k[4].metric(
+            "Training Cost",
+            f"Rs. {total_cost:,.0f}",
+        )
+        k[5].metric(
+            "Hours / Worker",
+            f"{avg_hours_per_worker:,.1f}",
+        )
+
+        st.write("")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.subheader("Monthly Training Hours")
+
+            monthly = (
+                filtered.assign(
+                    month_num=filtered["from_date"].dt.month,
+                    month_name=filtered["from_date"].dt.month_name(),
+                    year=filtered["from_date"].dt.year,
+                )
+                .groupby(
+                    ["year", "month_num", "month_name"],
+                    as_index=False,
+                )["calculated_total_hours"]
+                .sum()
+                .sort_values(["year", "month_num"])
             )
-            monthly_chart = monthly.set_index("Month")[
-                ["calculated_total_hours"]
-            ]
-            monthly_chart.columns = ["Total Training Hours"]
-            st.line_chart(
-                monthly_chart,
+
+            if not monthly.empty:
+                monthly["Month"] = monthly.apply(
+                    lambda r: (
+                        f"{r['month_name']} {int(r['year'])}"
+                        if filtered["from_date"].dt.year.nunique() > 1
+                        else r["month_name"]
+                    ),
+                    axis=1,
+                )
+
+                monthly_chart = monthly.set_index(
+                    "Month"
+                )[["calculated_total_hours"]]
+
+                monthly_chart.columns = [
+                    "Total Training Hours"
+                ]
+
+                st.line_chart(
+                    monthly_chart,
+                    use_container_width=True,
+                )
+
+        with c2:
+            st.subheader("Training Hours by Type")
+
+            by_type = (
+                filtered.groupby("training_type")[
+                    "calculated_total_hours"
+                ]
+                .sum()
+                .sort_values(ascending=False)
+                .to_frame("Training Hours")
+            )
+
+            st.bar_chart(
+                by_type,
                 use_container_width=True,
             )
-        else:
-            st.info("No monthly training data available.")
 
-    with c2:
-        st.subheader("Training Hours by Type")
-        by_type = (
-            filtered.groupby("training_type")["calculated_total_hours"]
-            .sum()
-            .sort_values(ascending=False)
-            .to_frame("Training Hours")
-        )
-        st.bar_chart(by_type, use_container_width=True)
+        c3, c4 = st.columns(2)
 
-    c3, c4 = st.columns(2)
+        with c3:
+            st.subheader("Programmes by Category")
 
-    with c3:
-        st.subheader("Programmes by Quarter")
-        by_q = (
-            filtered.groupby("quarter")["id"]
-            .count()
-            .reindex(["Q1", "Q2", "Q3", "Q4"], fill_value=0)
-            .to_frame("Programmes")
-        )
-        st.bar_chart(by_q, use_container_width=True)
+            by_category = (
+                filtered.groupby("category")["id"]
+                .count()
+                .reindex(
+                    TRAINING_CATEGORIES,
+                    fill_value=0,
+                )
+                .to_frame("Programmes")
+            )
 
-    with c4:
-        st.subheader("Training Cost by Type")
-        by_cost = (
-            filtered.groupby("training_type")["training_cost"]
-            .sum()
-            .sort_values(ascending=False)
-            .to_frame("Cost")
-        )
-        st.bar_chart(by_cost, use_container_width=True)
+            st.bar_chart(
+                by_category,
+                use_container_width=True,
+            )
+
+        with c4:
+            st.subheader("Training Cost by Category")
+
+            by_cost_category = (
+                filtered.groupby("category")[
+                    "training_cost"
+                ]
+                .sum()
+                .reindex(
+                    TRAINING_CATEGORIES,
+                    fill_value=0,
+                )
+                .to_frame("Actual Cost")
+            )
+
+            st.bar_chart(
+                by_cost_category,
+                use_container_width=True,
+            )
 
     # ------------------------------------------------------------
-    # RECORDS
+    # BUDGET VS ACTUAL
     # ------------------------------------------------------------
-    st.subheader("Training Records")
+    st.divider()
+    st.header("Budget vs Actuals")
 
-    display = filtered.copy()
-    display["from_date"] = display["from_date"].dt.strftime("%Y-%m-%d")
-    display["to_date"] = display["to_date"].dt.strftime("%Y-%m-%d")
-    display["Total Training Hours"] = display["calculated_total_hours"]
+    budget_df = get_budget_records()
 
-    display = display[
-        [
-            "programme_name",
-            "from_date",
-            "to_date",
-            "quarter",
-            "training_type",
-            "trainer_name",
-            "location",
-            "training_hours",
-            "participants_count",
-            "Total Training Hours",
-            "training_cost",
+    if budget_df.empty:
+        st.info(
+            "No budgets have been entered yet. "
+            "Use Budget Entry to add budgets by Location "
+            "and Category."
+        )
+    else:
+        budget_years = sorted(
+            budget_df["budget_year"].unique().tolist(),
+            reverse=True,
+        )
+
+        default_budget_year = (
+            int(selected_year)
+            if selected_year != "All Years"
+            and int(selected_year) in budget_years
+            else budget_years[0]
+        )
+
+        b_year = st.selectbox(
+            "Budget Year",
+            budget_years,
+            index=budget_years.index(default_budget_year),
+            key="budget_dash_year",
+        )
+
+        st.subheader(
+            "1. Select Location — Budget vs Actual"
+        )
+
+        b1, b2, b3, b4 = st.columns(4)
+
+        budget_locations = ["All Locations"] + sorted(
+            set(
+                KNOWN_LOCATIONS
+                + budget_df["location"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .tolist()
+            ),
+            key=str.upper,
+        )
+
+        budget_location = b1.selectbox(
+            "Select Location",
+            budget_locations,
+            key="budget_dash_location",
+        )
+
+        location_actual_df = df.copy()
+        location_actual_df = location_actual_df[
+            location_actual_df["from_date"].dt.year
+            == int(b_year)
         ]
-    ]
 
-    display.columns = [
-        "Programme",
-        "From Date",
-        "To Date",
-        "Quarter",
-        "Type",
-        "Trainer",
-        "Location",
-        "Hours / Worker",
-        "Workers",
-        "Total Training Hours",
-        "Training Cost (Rs.)",
-    ]
+        if budget_location != "All Locations":
+            location_actual_df = location_actual_df[
+                location_actual_df["location"]
+                .astype(str)
+                .str.strip()
+                == budget_location
+            ]
 
-    st.dataframe(
-        display,
-        use_container_width=True,
-        hide_index=True,
-    )
+        location_budget_df = budget_df[
+            budget_df["budget_year"] == int(b_year)
+        ].copy()
 
-    csv = display.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download Dashboard Data (CSV)",
-        csv,
-        "training_dashboard.csv",
-        "text/csv",
-        use_container_width=True,
-    )
+        if budget_location != "All Locations":
+            location_budget_df = location_budget_df[
+                location_budget_df["location"]
+                .astype(str)
+                .str.strip()
+                == budget_location
+            ]
 
+        location_budget_total = float(
+            location_budget_df["budget_amount"].sum()
+        )
+        location_actual_total = float(
+            location_actual_df["training_cost"].sum()
+        )
+        location_variance = (
+            location_budget_total - location_actual_total
+        )
+        location_utilization = (
+            (location_actual_total / location_budget_total) * 100
+            if location_budget_total > 0
+            else 0
+        )
+
+        b1.metric(
+            "Budget",
+            f"Rs. {location_budget_total:,.0f}",
+        )
+        b2.metric(
+            "Actual",
+            f"Rs. {location_actual_total:,.0f}",
+        )
+        b3.metric(
+            "Variance",
+            f"Rs. {location_variance:,.0f}",
+        )
+        b4.metric(
+            "Utilization",
+            f"{location_utilization:,.1f}%",
+        )
+
+        location_categories = pd.DataFrame(
+            {
+                "Category": TRAINING_CATEGORIES,
+                "Budget": [
+                    float(
+                        location_budget_df.loc[
+                            location_budget_df["category"] == cat,
+                            "budget_amount",
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+                "Actual": [
+                    float(
+                        location_actual_df.loc[
+                            location_actual_df["category"] == cat,
+                            "training_cost",
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+            }
+        ).set_index("Category")
+
+        st.bar_chart(
+            location_categories[
+                ["Budget", "Actual"]
+            ],
+            use_container_width=True,
+        )
+
+        st.subheader(
+            "2. Select Category — Budget vs Actual"
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        budget_category = c1.selectbox(
+            "Select Category",
+            ["All Categories"] + TRAINING_CATEGORIES,
+            key="budget_dash_category",
+        )
+
+        category_budget_df = budget_df[
+            budget_df["budget_year"] == int(b_year)
+        ].copy()
+
+        category_actual_df = df.copy()
+        category_actual_df = category_actual_df[
+            category_actual_df["from_date"].dt.year
+            == int(b_year)
+        ]
+
+        if budget_category != "All Categories":
+            category_budget_df = category_budget_df[
+                category_budget_df["category"]
+                == budget_category
+            ]
+            category_actual_df = category_actual_df[
+                category_actual_df["category"]
+                == budget_category
+            ]
+
+        category_budget_total = float(
+            category_budget_df["budget_amount"].sum()
+        )
+        category_actual_total = float(
+            category_actual_df["training_cost"].sum()
+        )
+        category_variance = (
+            category_budget_total - category_actual_total
+        )
+        category_utilization = (
+            (category_actual_total / category_budget_total) * 100
+            if category_budget_total > 0
+            else 0
+        )
+
+        c1.metric(
+            "Budget",
+            f"Rs. {category_budget_total:,.0f}",
+        )
+        c2.metric(
+            "Actual",
+            f"Rs. {category_actual_total:,.0f}",
+        )
+        c3.metric(
+            "Variance",
+            f"Rs. {category_variance:,.0f}",
+        )
+        c4.metric(
+            "Utilization",
+            f"{category_utilization:,.1f}%",
+        )
+
+        category_locations = (
+            sorted(
+                set(
+                    KNOWN_LOCATIONS
+                    + category_budget_df["location"]
+                    .dropna()
+                    .astype(str)
+                    .str.strip()
+                    .tolist()
+                    + category_actual_df["location"]
+                    .dropna()
+                    .astype(str)
+                    .str.strip()
+                    .tolist()
+                ),
+                key=str.upper,
+            )
+        )
+
+        category_location_df = pd.DataFrame(
+            {
+                "Location": category_locations,
+                "Budget": [
+                    float(
+                        category_budget_df.loc[
+                            category_budget_df["location"]
+                            .astype(str)
+                            .str.strip()
+                            == loc,
+                            "budget_amount",
+                        ].sum()
+                    )
+                    for loc in category_locations
+                ],
+                "Actual": [
+                    float(
+                        category_actual_df.loc[
+                            category_actual_df["location"]
+                            .astype(str)
+                            .str.strip()
+                            == loc,
+                            "training_cost",
+                        ].sum()
+                    )
+                    for loc in category_locations
+                ],
+            }
+        ).set_index("Location")
+
+        st.bar_chart(
+            category_location_df[
+                ["Budget", "Actual"]
+            ],
+            use_container_width=True,
+        )
+
+        budget_summary = pd.DataFrame(
+            {
+                "Category": TRAINING_CATEGORIES,
+                "Budget": [
+                    float(
+                        budget_df.loc[
+                            (budget_df["budget_year"] == int(b_year))
+                            & (
+                                budget_df["category"] == cat
+                            ),
+                            "budget_amount",
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+                "Actual": [
+                    float(
+                        df.loc[
+                            (df["from_date"].dt.year == int(b_year))
+                            & (df["category"] == cat),
+                            "training_cost",
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+            }
+        )
+
+        budget_summary["Variance"] = (
+            budget_summary["Budget"]
+            - budget_summary["Actual"]
+        )
+
+        budget_summary["Utilization %"] = budget_summary.apply(
+            lambda r: (
+                (r["Actual"] / r["Budget"]) * 100
+                if r["Budget"] > 0
+                else 0
+            ),
+            axis=1,
+        )
+
+        st.subheader("Budget vs Actual Summary")
+        st.dataframe(
+            budget_summary,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # ------------------------------------------------------------
+    # TRAINING RECORDS
+    # ------------------------------------------------------------
+    if not filtered.empty:
+        st.subheader("Training Records")
+
+        display = filtered.copy()
+        display["from_date"] = (
+            display["from_date"].dt.strftime("%Y-%m-%d")
+        )
+        display["to_date"] = (
+            display["to_date"].dt.strftime("%Y-%m-%d")
+        )
+        display["Total Training Hours"] = (
+            display["calculated_total_hours"]
+        )
+
+        display = display[
+            [
+                "programme_name",
+                "from_date",
+                "to_date",
+                "quarter",
+                "training_type",
+                "category",
+                "trainer_name",
+                "location",
+                "training_hours",
+                "participants_count",
+                "Total Training Hours",
+                "training_cost",
+            ]
+        ]
+
+        display.columns = [
+            "Programme",
+            "From Date",
+            "To Date",
+            "Quarter",
+            "Type",
+            "Category",
+            "Trainer",
+            "Location",
+            "Hours / Worker",
+            "Workers",
+            "Total Training Hours",
+            "Training Cost (Rs.)",
+        ]
+
+        st.dataframe(
+            display,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.download_button(
+            "Download Dashboard Data (CSV)",
+            display.to_csv(index=False).encode("utf-8"),
+            "training_dashboard.csv",
+            "text/csv",
+            use_container_width=True,
+        )
+
+
+# ============================================================
+# RECORDS
+# ============================================================
 
 def render_records():
     user = require_user()
+
     st.title("Training Records")
+
     df = get_training_records()
+
     if df.empty:
         st.info("No training records available.")
         return
 
     search = st.text_input(
-        "Search programme, trainer, location or type",
-        placeholder="Search..."
+        "Search programme, trainer, location, category or type",
+        placeholder="Search...",
     )
+
     filtered = df.copy()
 
     if search.strip():
         q = search.strip().lower()
+
         mask = (
-            filtered["programme_name"].astype(str).str.lower().str.contains(q, na=False)
-            | filtered["trainer_name"].astype(str).str.lower().str.contains(q, na=False)
-            | filtered["location"].astype(str).str.lower().str.contains(q, na=False)
-            | filtered["power_plant"].astype(str).str.lower().str.contains(q, na=False)
-            | filtered["training_type"].astype(str).str.lower().str.contains(q, na=False)
+            filtered["programme_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["trainer_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["location"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["power_plant"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["training_type"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["category"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
         )
+
         filtered = filtered[mask]
 
     if filtered.empty:
@@ -1914,23 +3199,56 @@ def render_records():
         return
 
     display = filtered.copy()
-    display["calculated_total_hours"] = display["training_hours"] * display["participants_count"]
-    display["from_date"] = display["from_date"].dt.strftime("%Y-%m-%d")
-    display["to_date"] = display["to_date"].dt.strftime("%Y-%m-%d")
+    display["calculated_total_hours"] = (
+        display["training_hours"]
+        * display["participants_count"]
+    )
+    display["from_date"] = (
+        display["from_date"].dt.strftime("%Y-%m-%d")
+    )
+    display["to_date"] = (
+        display["to_date"].dt.strftime("%Y-%m-%d")
+    )
+
     display = display[
         [
-            "id", "programme_name", "from_date", "to_date", "quarter",
-            "training_type", "trainer_name", "location",
-            "training_hours", "participants_count",
-            "calculated_total_hours", "training_cost"
+            "id",
+            "programme_name",
+            "from_date",
+            "to_date",
+            "quarter",
+            "training_type",
+            "category",
+            "trainer_name",
+            "location",
+            "training_hours",
+            "participants_count",
+            "calculated_total_hours",
+            "training_cost",
         ]
     ]
+
     display.columns = [
-        "ID", "Programme", "From Date", "To Date", "Quarter", "Type",
-        "Trainer", "Location", "Hours / Worker", "Workers",
-        "Total Training Hours", "Cost (Rs.)"
+        "ID",
+        "Programme",
+        "From Date",
+        "To Date",
+        "Quarter",
+        "Type",
+        "Category",
+        "Trainer",
+        "Location",
+        "Hours / Worker",
+        "Workers",
+        "Total Training Hours",
+        "Cost (Rs.)",
     ]
-    st.dataframe(display, use_container_width=True, hide_index=True)
+
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.download_button(
         "Download Records as CSV",
@@ -1942,93 +3260,186 @@ def render_records():
 
     st.divider()
     st.subheader("Edit Record")
+
     ids = filtered["id"].astype(int).tolist()
-    selected_id = st.selectbox("Select record ID", ids)
-    row = df[df["id"] == selected_id].iloc[0]
+
+    selected_id = st.selectbox(
+        "Select record ID",
+        ids,
+        key="records_selected_id",
+    )
+
+    selected_rows = df[df["id"] == selected_id]
+
+    if selected_rows.empty:
+        st.warning(
+            "The selected record is no longer available."
+        )
+        return
+
+    row = selected_rows.iloc[0]
 
     with st.expander("Edit selected record"):
         a, b = st.columns(2)
+
         with a:
             programme = st.text_input(
                 "Programme",
-                value=str(row["programme_name"] or ""),
-                key=f"ep_{selected_id}"
+                value=str(
+                    row["programme_name"] or ""
+                ),
+                key=f"ep_{selected_id}",
             )
+
             from_default = (
                 row["from_date"].date()
                 if pd.notna(row["from_date"])
                 else date.today()
             )
+
             to_default = (
                 row["to_date"].date()
                 if pd.notna(row["to_date"])
                 else from_default
             )
+
             from_date = st.date_input(
                 "From Date",
                 value=from_default,
-                key=f"ef_{selected_id}"
+                key=f"ef_{selected_id}",
             )
+
             to_date = st.date_input(
                 "To Date",
                 value=to_default,
-                key=f"et_{selected_id}"
+                key=f"et_{selected_id}",
             )
-            quarter_options = ["Q1", "Q2", "Q3", "Q4"]
+
+            quarter_options = [
+                "Q1", "Q2", "Q3", "Q4"
+            ]
+
             quarter = st.selectbox(
                 "Quarter",
                 quarter_options,
                 index=(
-                    quarter_options.index(str(row["quarter"]))
-                    if str(row["quarter"]) in quarter_options else 0
+                    quarter_options.index(
+                        str(row["quarter"])
+                    )
+                    if str(row["quarter"])
+                    in quarter_options
+                    else 0
                 ),
-                key=f"eq_{selected_id}"
+                key=f"eq_{selected_id}",
             )
 
         with b:
-            types = ["Technical", "Soft Skill", "Compliance", "Other"]
-            current_type = str(row["training_type"])
+            current_type = str(
+                row["training_type"]
+            )
+
+            training_types = TRAINING_TYPES.copy()
+
+            if (
+                current_type
+                and current_type not in training_types
+            ):
+                training_types.append(current_type)
+
             training_type = st.selectbox(
                 "Type",
-                types,
-                index=(types.index(current_type) if current_type in types else 0),
-                key=f"ety_{selected_id}"
+                training_types,
+                index=(
+                    training_types.index(current_type)
+                    if current_type in training_types
+                    else 0
+                ),
+                key=f"ety_{selected_id}",
+            )
+
+            current_category = str(
+                row["category"]
+                or "Internal Training"
+            )
+
+            categories = TRAINING_CATEGORIES.copy()
+
+            if (
+                current_category
+                and current_category not in categories
+            ):
+                categories.append(current_category)
+
+            category = st.selectbox(
+                "Category",
+                categories,
+                index=(
+                    categories.index(current_category)
+                    if current_category in categories
+                    else 0
+                ),
+                key=f"ecat_{selected_id}",
             )
 
             trainer_name = st.text_input(
                 "Trainer's Name",
-                value=str(row.get("trainer_name", "") or ""),
-                key=f"etrainer_{selected_id}"
+                value=str(
+                    row.get("trainer_name", "")
+                    or ""
+                ),
+                key=f"etrainer_{selected_id}",
             )
 
-            current_plant = str(row["power_plant"] or "Not Specified").strip()
-            existing_plants = ["Not Specified"] + get_power_plants()
-            if current_plant and current_plant not in existing_plants:
+            current_plant = str(
+                row["power_plant"]
+                or "Not Specified"
+            ).strip()
+
+            existing_plants = (
+                ["Not Specified"]
+                + get_power_plants()
+            )
+
+            if (
+                current_plant
+                and current_plant not in existing_plants
+            ):
                 existing_plants.append(current_plant)
+
             power_plant = st.selectbox(
                 "Power Plant",
                 existing_plants,
                 index=(
                     existing_plants.index(current_plant)
-                    if current_plant in existing_plants else 0
+                    if current_plant in existing_plants
+                    else 0
                 ),
-                key=f"eplant_{selected_id}"
+                key=f"eplant_{selected_id}",
             )
 
             training_hours = st.number_input(
                 "Training Hours per Worker",
                 min_value=0.0,
-                value=float(row["training_hours"]),
+                value=float(
+                    row["training_hours"]
+                ),
                 step=0.5,
-                key=f"eh_{selected_id}"
+                key=f"eh_{selected_id}",
             )
+
             participants = st.number_input(
                 "Workers Attended",
                 min_value=0,
-                value=int(round(float(row["participants_count"]))),
+                value=int(
+                    round(
+                        float(
+                            row["participants_count"]
+                        )
+                    )
+                ),
                 step=1,
                 format="%d",
-                key=f"epeople_{selected_id}"
+                key=f"epeople_{selected_id}",
             )
 
         cost = st.number_input(
@@ -2036,37 +3447,62 @@ def render_records():
             min_value=0.0,
             value=float(row["training_cost"]),
             step=1000.0,
-            key=f"ec_{selected_id}"
-        )
-        names = st.text_area(
-            "Participant Names",
-            value=str(row["participant_names"] or ""),
-            key=f"en_{selected_id}"
+            key=f"ecost_{selected_id}",
         )
 
-        total_hours = training_hours * participants
+        names = st.text_area(
+            "Participant Names",
+            value=str(
+                row["participant_names"]
+                or ""
+            ),
+            key=f"en_{selected_id}",
+        )
+
+        total_hours = (
+            training_hours * participants
+        )
+
         st.markdown(
-            f"**Total Training Hours = {training_hours:,.2f} × {participants:,.1f} = {total_hours:,.2f}**"
+            f"**Total Training Hours = "
+            f"{training_hours:,.2f} × "
+            f"{participants:,.1f} = "
+            f"{total_hours:,.2f}**"
         )
 
         b1, b2 = st.columns(2)
+
         with b1:
             if st.button(
                 "Save Changes",
                 type="primary",
                 use_container_width=True,
-                key=f"save_{selected_id}"
+                key=f"save_{selected_id}",
             ):
                 if not programme.strip():
-                    st.error("Programme name cannot be empty.")
+                    st.error(
+                        "Programme name cannot be empty."
+                    )
                 elif not trainer_name.strip():
-                    st.error("Trainer's name cannot be empty.")
+                    st.error(
+                        "Trainer's name cannot be empty."
+                    )
                 elif not power_plant.strip():
-                    st.error("Please select a power plant.")
+                    st.error(
+                        "Please select a power plant."
+                    )
                 elif to_date < from_date:
-                    st.error("To Date cannot be earlier than From Date.")
-                elif training_hours <= 0 or participants <= 0:
-                    st.error("Training Hours and Workers Attended must be greater than 0.")
+                    st.error(
+                        "To Date cannot be earlier than From Date."
+                    )
+                elif (
+                    training_hours <= 0
+                    or participants <= 0
+                ):
+                    st.error(
+                        "Training Hours and Workers Attended "
+                        "must be greater than 0."
+                    )
                 else:
                     try:
                         update_training_record(
@@ -2076,6 +3512,7 @@ def render_records():
                             to_date,
                             quarter,
                             training_type,
+                            category,
                             power_plant.strip(),
                             power_plant.strip(),
                             trainer_name.strip(),
@@ -2084,59 +3521,437 @@ def render_records():
                             training_hours,
                             participants,
                         )
-                        st.success("Record updated successfully.")
+
+                        st.success(
+                            "Record updated successfully."
+                        )
                         st.rerun()
+
                     except Exception as e:
-                        st.error("Unable to update record.")
-                        with st.expander("Technical details"):
+                        st.error(
+                            "Unable to update record."
+                        )
+                        with st.expander(
+                            "Technical details"
+                        ):
                             st.exception(e)
 
         with b2:
-            is_admin = str(user.get("role", "user")).strip().lower() == "admin"
+            is_admin = (
+                str(user.get("role", "user"))
+                .strip()
+                .lower()
+                == "admin"
+            )
+
             if is_admin:
                 if st.button(
                     "Delete Record",
                     use_container_width=True,
-                    key=f"delete_{selected_id}"
+                    key=f"delete_{selected_id}",
                 ):
                     try:
-                        delete_training_record(selected_id)
-                        st.success("Record deleted successfully.")
+                        delete_training_record(
+                            selected_id
+                        )
+                        st.success(
+                            "Record deleted successfully."
+                        )
                         st.rerun()
+
                     except Exception as e:
-                        st.error("Unable to delete record.")
-                        with st.expander("Technical details"):
+                        st.error(
+                            "Unable to delete record."
+                        )
+                        with st.expander(
+                            "Technical details"
+                        ):
                             st.exception(e)
             else:
-                st.caption("Delete is available to administrators only.")
+                st.caption(
+                    "Delete is available to administrators only."
+                )
+
+
+# ============================================================
+# BUDGET ENTRY
+# ============================================================
+
+def render_budget_entry():
+    user = require_admin()
+
+    st.title("Training Budget Entry")
+    st.caption(
+        "Enter separate annual budgets for each Location and Category."
+    )
+
+    st.markdown(
+        """
+        <div class="formula-box">
+            <div class="formula-title">
+                Budget Structure
+            </div>
+            <div class="formula-text">
+                Budget = Year + Location + Category + Budget Amount
+            </div>
+            <div class="small-note">
+                Categories:
+                Internal Training · External Training ·
+                Overseas Training · Management Trainings
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    locations = get_locations()
+    budget_df = get_budget_records()
+
+    with st.container(border=True):
+        st.subheader("Enter / Update Budget")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            budget_year = st.number_input(
+                "Budget Year *",
+                min_value=2020,
+                max_value=2100,
+                value=date.today().year,
+                step=1,
+                format="%d",
+                key="budget_year_entry",
+            )
+
+            budget_location = st.selectbox(
+                "Location *",
+                locations,
+                key="budget_location_entry",
+            )
+
+        with c2:
+            budget_category = st.selectbox(
+                "Category *",
+                TRAINING_CATEGORIES,
+                key="budget_category_entry",
+            )
+
+            budget_amount = st.number_input(
+                "Budget Amount (Rs.) *",
+                min_value=0.0,
+                step=10000.0,
+                format="%.2f",
+                key="budget_amount_entry",
+            )
+
+        if st.button(
+            "Save Budget",
+            type="primary",
+            use_container_width=True,
+        ):
+            if not budget_location.strip():
+                st.error(
+                    "Please select a location."
+                )
+            elif budget_amount < 0:
+                st.error(
+                    "Budget amount cannot be negative."
+                )
+            else:
+                try:
+                    save_budget_record(
+                        None,
+                        budget_year,
+                        budget_location,
+                        budget_category,
+                        budget_amount,
+                        user.get("id"),
+                    )
+
+                    st.success(
+                        "Budget saved successfully. "
+                        "If the same Year + Location + Category "
+                        "already existed, it was updated."
+                    )
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(
+                        "Unable to save the budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+    st.divider()
+    st.subheader("Existing Budgets")
+
+    budget_df = get_budget_records()
+
+    if budget_df.empty:
+        st.info("No budget records have been entered yet.")
+        return
+
+    budget_display = budget_df.copy()
+
+    budget_display["Budget Amount (Rs.)"] = (
+        budget_display["budget_amount"]
+    )
+
+    budget_display = budget_display[
+        [
+            "id",
+            "budget_year",
+            "location",
+            "category",
+            "Budget Amount (Rs.)",
+        ]
+    ]
+
+    budget_display.columns = [
+        "ID",
+        "Year",
+        "Location",
+        "Category",
+        "Budget Amount (Rs.)",
+    ]
+
+    st.dataframe(
+        budget_display,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "Download Budgets as CSV",
+        budget_display.to_csv(
+            index=False
+        ).encode("utf-8"),
+        "training_budgets.csv",
+        "text/csv",
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Edit / Delete Budget")
+
+    budget_ids = (
+        budget_df["id"]
+        .astype(int)
+        .tolist()
+    )
+
+    selected_budget_id = st.selectbox(
+        "Select Budget ID",
+        budget_ids,
+        key="selected_budget_id",
+    )
+
+    budget_rows = budget_df[
+        budget_df["id"] == selected_budget_id
+    ]
+
+    if budget_rows.empty:
+        return
+
+    budget_row = budget_rows.iloc[0]
+
+    with st.expander("Edit selected budget"):
+        ec1, ec2 = st.columns(2)
+
+        with ec1:
+            edit_year = st.number_input(
+                "Year",
+                min_value=2020,
+                max_value=2100,
+                value=int(
+                    budget_row["budget_year"]
+                ),
+                step=1,
+                format="%d",
+                key=f"edit_budget_year_{selected_budget_id}",
+            )
+
+            edit_locations = locations.copy()
+
+            current_location = str(
+                budget_row["location"]
+            )
+
+            if (
+                current_location
+                and current_location not in edit_locations
+            ):
+                edit_locations.append(
+                    current_location
+                )
+
+            edit_location = st.selectbox(
+                "Location",
+                edit_locations,
+                index=(
+                    edit_locations.index(
+                        current_location
+                    )
+                    if current_location
+                    in edit_locations
+                    else 0
+                ),
+                key=f"edit_budget_location_{selected_budget_id}",
+            )
+
+        with ec2:
+            current_category = str(
+                budget_row["category"]
+            )
+
+            edit_category = st.selectbox(
+                "Category",
+                TRAINING_CATEGORIES,
+                index=(
+                    TRAINING_CATEGORIES.index(
+                        current_category
+                    )
+                    if current_category
+                    in TRAINING_CATEGORIES
+                    else 0
+                ),
+                key=f"edit_budget_category_{selected_budget_id}",
+            )
+
+            edit_amount = st.number_input(
+                "Budget Amount (Rs.)",
+                min_value=0.0,
+                value=float(
+                    budget_row["budget_amount"]
+                ),
+                step=10000.0,
+                format="%.2f",
+                key=f"edit_budget_amount_{selected_budget_id}",
+            )
+
+        ec_save, ec_delete = st.columns(2)
+
+        with ec_save:
+            if st.button(
+                "Save Budget Changes",
+                type="primary",
+                use_container_width=True,
+                key=f"save_budget_{selected_budget_id}",
+            ):
+                try:
+                    save_budget_record(
+                        int(selected_budget_id),
+                        edit_year,
+                        edit_location,
+                        edit_category,
+                        edit_amount,
+                        user.get("id"),
+                    )
+                    st.success(
+                        "Budget updated successfully."
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "Unable to update budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+        with ec_delete:
+            if st.button(
+                "Delete Budget",
+                use_container_width=True,
+                key=f"delete_budget_{selected_budget_id}",
+            ):
+                try:
+                    delete_budget_record(
+                        selected_budget_id
+                    )
+                    st.success(
+                        "Budget deleted successfully."
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "Unable to delete budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+
+# ============================================================
+# ACCOUNT
+# ============================================================
 
 def render_account():
     user = require_user()
+
     st.title("My Account")
+
     with st.container(border=True):
-        st.write(f"**Name:** {user.get('full_name', user.get('name', ''))}")
-        st.write(f"**Username:** @{user.get('username', '')}")
-        st.write(f"**Email:** {user.get('email', '')}")
-        st.write(f"**Role:** {str(user.get('role', 'user')).title()}")
+        st.write(
+            f"**Name:** "
+            f"{user.get('full_name', user.get('name', ''))}"
+        )
+        st.write(
+            f"**Username:** @{user.get('username', '')}"
+        )
+        st.write(
+            f"**Email:** {user.get('email', '')}"
+        )
+        st.write(
+            f"**Role:** "
+            f"{str(user.get('role', 'user')).title()}"
+        )
 
     st.write("")
+
     with st.container(border=True):
         st.subheader("Change Password")
+
         with st.form("change_password_form"):
-            new_password = st.text_input("New password", type="password")
-            confirm = st.text_input("Confirm new password", type="password")
-            submit = st.form_submit_button("Update password", type="primary")
+            new_password = st.text_input(
+                "New password",
+                type="password",
+            )
+            confirm = st.text_input(
+                "Confirm new password",
+                type="password",
+            )
+            submit = st.form_submit_button(
+                "Update password",
+                type="primary",
+            )
+
         if submit:
             if len(new_password) < 8:
-                st.error("Password must contain at least 8 characters.")
+                st.error(
+                    "Password must contain at least 8 characters."
+                )
             elif new_password != confirm:
-                st.error("Passwords do not match.")
+                st.error(
+                    "Passwords do not match."
+                )
             else:
                 try:
-                    change_password(int(user["id"]), new_password)
-                    st.success("Password updated successfully.")
+                    change_password(
+                        int(user["id"]),
+                        new_password,
+                    )
+                    st.success(
+                        "Password updated successfully."
+                    )
                 except Exception:
-                    st.error("Unable to update the password.")
+                    st.error(
+                        "Unable to update the password."
+                    )
 
 
 # ============================================================
@@ -2144,11 +3959,17 @@ def render_account():
 # ============================================================
 
 logged_user = get_user()
+
 if not logged_user:
     render_login()
 else:
     render_sidebar()
-    page = st.session_state.get("hr_page", "Home")
+
+    page = st.session_state.get(
+        "hr_page",
+        "Home",
+    )
+
     if page == "Home":
         render_home()
     elif page == "Dashboard":
@@ -2159,6 +3980,8 @@ else:
         render_import_excel()
     elif page == "Records":
         render_records()
+    elif page == "Budget Entry":
+        render_budget_entry()
     elif page == "My Account":
         render_account()
     else:

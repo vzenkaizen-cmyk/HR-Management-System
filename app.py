@@ -702,6 +702,8 @@ KNOWN_LOCATIONS = [
     "UDW", "VBL", "WMB"
 ]
 
+BUDGET_LOCATIONS = ["HOF", "BBO"]
+
 KNOWN_POWER_PLANTS = KNOWN_LOCATIONS.copy()
 SUPPORTED_YEARS = [2026, 2025, 2024]
 
@@ -1919,6 +1921,18 @@ def render_data_entry():
         "Total training hours are calculated automatically."
     )
 
+    # Budget is maintained separately from Training Cost (Actual).
+    # This gives every authenticated user a clear way to enter annual budgets.
+    budget_access_col, _ = st.columns([1, 2])
+    with budget_access_col:
+        if st.button(
+            "💰 Open Budget Entry",
+            use_container_width=True,
+            key="open_budget_entry_from_data_entry",
+        ):
+            st.session_state.hr_page = "Budget Entry"
+            st.rerun()
+
     st.markdown(
         """
         <div class="formula-box">
@@ -2512,14 +2526,9 @@ def render_dashboard():
             key="dash_quarter",
         )
 
-        types_in_data = [
-            x for x in TRAINING_TYPES
-            if x in set(
-                df["training_type"]
-                .dropna()
-                .astype(str)
-            )
-        ]
+        # Always show all configured training types, including
+        # Japanese Management Systems even if no record exists yet.
+        types_in_data = TRAINING_TYPES.copy()
 
         selected_type = f4.selectbox(
             "Training Type",
@@ -2527,14 +2536,9 @@ def render_dashboard():
             key="dash_type",
         )
 
-        categories_in_data = [
-            x for x in TRAINING_CATEGORIES
-            if x in set(
-                df["category"]
-                .dropna()
-                .astype(str)
-            )
-        ]
+        # Always show all four required categories, even when
+        # a category has no training records yet.
+        categories_in_data = TRAINING_CATEGORIES.copy()
 
         selected_category = f5.selectbox(
             "Category",
@@ -2765,6 +2769,11 @@ def render_dashboard():
     # ------------------------------------------------------------
     st.divider()
     st.header("Budget vs Actuals")
+    st.caption(
+        "Actuals are calculated from Training Cost. "
+        "Budget values come from the separate Budget Entry section. "
+        "Use the Location and Category selectors below to compare Budget vs Actual."
+    )
 
     budget_df = get_budget_records()
 
@@ -2802,7 +2811,7 @@ def render_dashboard():
 
         budget_locations = ["All Locations"] + sorted(
             set(
-                KNOWN_LOCATIONS
+                BUDGET_LOCATIONS
                 + budget_df["location"]
                 .dropna()
                 .astype(str)
@@ -3578,11 +3587,13 @@ def render_records():
 # ============================================================
 
 def render_budget_entry():
-    user = require_admin()
+    # Budget Entry is available to every authenticated user.
+    user = require_user()
 
     st.title("Training Budget Entry")
     st.caption(
-        "Enter separate annual budgets for each Location and Category."
+        "Enter and manage separate annual budgets for HOF or BBO and each training category. "
+        "This section is available to all logged-in users."
     )
 
     st.markdown(
@@ -3592,7 +3603,7 @@ def render_budget_entry():
                 Budget Structure
             </div>
             <div class="formula-text">
-                Budget = Year + Location + Category + Budget Amount
+                Budget = Year + Location (HOF / BBO) + Category + Budget Amount
             </div>
             <div class="small-note">
                 Categories:
@@ -3604,8 +3615,16 @@ def render_budget_entry():
         unsafe_allow_html=True,
     )
 
-    locations = get_locations()
     budget_df = get_budget_records()
+    existing_budget_locations = (
+        budget_df["location"].dropna().astype(str).str.strip().tolist()
+        if not budget_df.empty and "location" in budget_df.columns
+        else []
+    )
+    locations = sorted(
+        set(BUDGET_LOCATIONS + existing_budget_locations),
+        key=str.upper,
+    )
 
     with st.container(border=True):
         st.subheader("Enter / Update Budget")

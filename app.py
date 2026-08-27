@@ -14,7 +14,7 @@ from auth.auth import (
     logout_user,
     is_logged_in,
     current_user,
-    change_password,
+    change_password, 
 )
 
 # ============================================================

@@ -85,19 +85,31 @@ div[data-baseweb="base-input"] input,
 }
 div[data-baseweb="select"] * { color:#173f5c !important; }
 
-/* Widen selectbox dropdowns so long options such as
-   "Japanese Management Systems" are fully visible. */
+/* Selectboxes: keep selected values readable and long dropdown options visible. */
+div[data-baseweb="select"] [role="button"] {
+    min-width: 0 !important;
+}
+div[data-baseweb="select"] [role="button"] > div {
+    min-width: 0 !important;
+}
+div[data-baseweb="select"] [role="button"] span {
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+/* Dropdown menu: enough room for Japanese Management Systems and month names. */
 div[data-baseweb="popover"] {
-    min-width: 340px !important;
+    min-width: 300px !important;
 }
 div[data-baseweb="popover"] [role="listbox"] {
-    min-width: 340px !important;
+    min-width: 300px !important;
 }
 div[data-baseweb="popover"] [role="option"] {
     white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    padding-right: 18px !important;
+    padding-right: 20px !important;
 }
 
 /* Buttons */
@@ -2486,7 +2498,7 @@ def render_dashboard():
         # and Category are all clearly readable. Extra width is retained
         # for long values such as "Japanese Management Systems".
         f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.20, 1.05, 1.10, 2.00, 1.55, 1.00]
+            [1.18, 1.03, 1.08, 1.88, 1.48, 1.35]
         )
 
         locations = ["All Locations"] + sorted(
@@ -4013,4 +4025,3 @@ else:
     else:
         st.session_state.hr_page = "Home"
         render_home()
-

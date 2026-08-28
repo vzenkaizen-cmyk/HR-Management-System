@@ -89,83 +89,81 @@ div[data-baseweb="base-input"] input,
 div[data-baseweb="select"] * { color:#173f5c !important; }
 
 /* ============================================================
-   DASHBOARD FILTERS — FULL TEXT, NO ELLIPSIS
+   DASHBOARD FILTERS — NO ELLIPSIS / FULL SELECTED TEXT
+   The six filters are deliberately split into two rows. This gives
+   every selectbox enough real width; CSS alone cannot make six long
+   labels fit into a narrow single row without clipping.
    ============================================================ */
-[data-testid="stSelectbox"] {
-    width: 100% !important;
-    min-width: 0 !important;
-}
-
-[data-testid="stSelectbox"] > div {
-    width: 100% !important;
-    min-width: 0 !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"],
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-    width: 100% !important;
-    min-width: 0 !important;
-}
-
-/* The BaseWeb select button is a flex row. The first child contains
-   the selected text; let it use all available width instead of the
-   default overflow/ellipsis behaviour. */
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] {
-    width: 100% !important;
-    min-width: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    overflow: visible !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-    width: auto !important;
-    max-width: none !important;
-    overflow: visible !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child * {
-    max-width: none !important;
-    overflow: visible !important;
-    white-space: nowrap !important;
-    text-overflow: clip !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] span,
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] p {
-    display: block !important;
-    max-width: none !important;
-    overflow: visible !important;
-    white-space: nowrap !important;
-    text-overflow: clip !important;
-}
-
-/* Remove excess horizontal padding inside the selected-value area. */
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-}
-
-/* Give the dashboard filter row more usable width. */
 .st-key-dashboard_filters {
     width: 100% !important;
 }
 
 .st-key-dashboard_filters [data-testid="stHorizontalBlock"] {
     width: 100% !important;
-    gap: 0.55rem !important;
+    gap: 0.75rem !important;
 }
 
 .st-key-dashboard_filters [data-testid="column"] {
     min-width: 0 !important;
 }
 
-/* Keep the dropdown itself readable when opened. */
+/* Make every selectbox fill its complete column. */
+.st-key-dashboard_filters [data-testid="stSelectbox"],
+.st-key-dashboard_filters [data-testid="stSelectbox"] > div,
+.st-key-dashboard_filters div[data-baseweb="select"],
+.st-key-dashboard_filters div[data-baseweb="select"] > div {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* BaseWeb creates the visible selected value several levels deep.
+   These rules remove its default ellipsis and allow the text to use
+   the complete width available before the arrow. */
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] > div {
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] > div:first-child {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] > div:first-child > div {
+    max-width: none !important;
+    width: auto !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+}
+
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] span,
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] p {
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+}
+
+/* Keep the arrow area compact; give the wording the available space. */
+.st-key-dashboard_filters div[data-baseweb="select"] [role="button"] svg {
+    flex: 0 0 auto !important;
+}
+
+/* Dropdown options: never truncate long names. */
 div[data-baseweb="popover"] {
-    min-width: max-content !important;
-    width: max-content !important;
     max-width: none !important;
 }
 
@@ -181,6 +179,14 @@ div[data-baseweb="popover"] [role="option"] {
     text-overflow: clip !important;
     padding-left: 12px !important;
     padding-right: 12px !important;
+}
+
+/* Responsive fallback: on narrower screens stack the filters instead
+   of squeezing them until Streamlit clips their text. */
+@media (max-width: 1100px) {
+    .st-key-dashboard_filters [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+    }
 }
 
 /* Buttons */
@@ -2565,13 +2571,12 @@ def render_dashboard():
     # MAIN FILTERS
     # ------------------------------------------------------------
     with st.container(border=True, key="dashboard_filters"):
-        # Deliberately balanced widths: every selected value is visible
-        # without "...", while Training Type gets extra room for
-        # "Japanese Management Systems".
-        f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.45, 1.15, 1.25, 2.25, 1.75, 1.45],
-            gap="small",
-        )
+        # Use two rows instead of squeezing six filters into one row.
+        # This is the reliable fix for Streamlit/BaseWeb clipping.
+        r1 = st.columns([1.35, 1.35, 1.35], gap="small")
+        r2 = st.columns([1.55, 1.55, 1.35], gap="small")
+        f1, f2, f3 = r1
+        f4, f5, f6 = r2
 
         locations = ["All Locations"] + sorted(
             set(

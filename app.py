@@ -4105,14 +4105,12 @@ def render_budget_entry():
                             "location",
                             "category",
                             "Budget Amount (Rs.)",
-                            "excel_row",
                         ]
                     ]
                     preview_display.columns = [
                         "Plant / Site",
                         "Category",
                         "Budget Amount (Rs.)",
-                        "Excel Row",
                     ]
 
                     st.write("**Preview of budgets to be imported:**")

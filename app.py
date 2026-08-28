@@ -28,6 +28,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# V-TRAIN logo file (keep vtrain_logo.png in the same GitHub folder as this file)
+LOGO_PATH = Path(__file__).resolve().parent / "vtrain_logo.png"
+
 try:
     st.set_option("client.showSidebarNavigation", False)
 except Exception:
@@ -283,7 +286,23 @@ section[data-testid="stSidebar"] {
 section[data-testid="stSidebar"] .stMarkdown,
 section[data-testid="stSidebar"] .stMarkdown p,
 section[data-testid="stSidebar"] label { color:#fff !important; }
-.sidebar-brand { text-align:center; padding:8px 0 16px; }
+.sidebar-logo-wrap {
+    background:#fff !important;
+    border-radius:14px !important;
+    padding:8px !important;
+    margin:0 auto 12px auto !important;
+    width:100% !important;
+    box-sizing:border-box !important;
+    text-align:center !important;
+    box-shadow:0 4px 14px rgba(0,0,0,.10) !important;
+}
+.sidebar-logo-wrap img {
+    display:block !important;
+    max-width:100% !important;
+    height:auto !important;
+    margin:0 auto !important;
+}
+.sidebar-brand { text-align:center; padding:0 0 16px; }
 .sidebar-brand-icon { font-size:32px; }
 .sidebar-brand-title { color:#fff !important; font-size:20px; font-weight:800; }
 .sidebar-user {
@@ -1782,13 +1801,18 @@ def render_sidebar():
     role = user.get("role", "user")
 
     with st.sidebar:
+        if LOGO_PATH.exists():
+            st.markdown('<div class="sidebar-logo-wrap">', unsafe_allow_html=True)
+            st.image(str(LOGO_PATH), use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<div class="sidebar-brand"><div class="sidebar-brand-icon">📊</div></div>',
+                unsafe_allow_html=True,
+            )
+
         st.markdown(
-            """
-            <div class="sidebar-brand">
-                <div class="sidebar-brand-icon">📊</div>
-                <div class="sidebar-brand-title">HR Training Dashboard</div>
-            </div>
-            """,
+            '<div class="sidebar-brand-title">HR Training Dashboard</div>',
             unsafe_allow_html=True,
         )
 
@@ -1849,8 +1873,13 @@ def render_sidebar():
 # ============================================================
 
 def render_login():
+    if LOGO_PATH.exists():
+        _, logo_col, _ = st.columns([1, 1.4, 1])
+        with logo_col:
+            st.image(str(LOGO_PATH), use_container_width=True)
+
     st.markdown(
-        '<div class="app-title">📊 HR Training Dashboard</div>',
+        '<div class="app-title">HR Training Dashboard</div>',
         unsafe_allow_html=True,
     )
     st.markdown(

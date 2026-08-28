@@ -1282,13 +1282,50 @@ def get_budget_records():
     return df
 
 
+def _budget_created_by_bigint(value):
+    """
+    training_budgets.created_by is BIGINT in the current Neon schema.
+
+    The authentication layer can return a UUID user id.  Passing that UUID
+    directly to PostgreSQL causes:
+        DatatypeMismatch: BIGINT vs UUID
+
+    Keep numeric creator ids when available.  For UUID/non-numeric auth ids,
+    store NULL instead of sending an incompatible value.  The budget record
+    itself is still saved normally.
+    """
+    if value is None:
+        return None
+
+    # bool is an int subclass, but should not be treated as a user id.
+    if isinstance(value, bool):
+        return None
+
+    try:
+        if isinstance(value, int):
+            return int(value)
+
+        text = str(value).strip()
+        if re.fullmatch(r"[+-]?\\d+", text):
+            return int(text)
+
+    except Exception:
+        pass
+
+    # Current auth ids may be UUIDs.  The database column is BIGINT,
+    # so leave it NULL rather than causing an INSERT type error.
+    return None
+
+
 def save_budget_record(budget_id, budget_year, location, category, budget_amount, created_by=None):
+    safe_created_by = _budget_created_by_bigint(created_by)
+
     params = {
         "budget_year": int(budget_year),
         "location": str(location).strip(),
         "category": str(category).strip(),
         "budget_amount": float(budget_amount),
-        "created_by": created_by,
+        "created_by": safe_created_by,
     }
 
     if budget_id:

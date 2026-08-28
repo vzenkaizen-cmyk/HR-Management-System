@@ -181,6 +181,64 @@ div[data-baseweb="popover"] [role="option"] {
     padding-right: 12px !important;
 }
 
+/* Second-row filters get extra width so long values such as
+   "Japanese Management Systems" and "Management Training" remain visible. */
+.st-key-dashboard_filters [data-testid="stHorizontalBlock"]:nth-of-type(2) {
+    width: 100% !important;
+    gap: 0.75rem !important;
+}
+
+.st-key-dashboard_filters [data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"]:nth-child(1),
+.st-key-dashboard_filters [data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"]:nth-child(2) {
+    min-width: 0 !important;
+}
+
+/* Remove the internal BaseWeb text-width restriction that causes
+   Streamlit to render selected values with "...". */
+.st-key-dashboard_filters [data-baseweb="select"] > div {
+    padding-left: 10px !important;
+    padding-right: 8px !important;
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters [data-baseweb="select"] [data-baseweb="select"] {
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters [data-baseweb="select"] [role="button"] {
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+.st-key-dashboard_filters [data-baseweb="select"] [role="button"] > div {
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+.st-key-dashboard_filters [data-baseweb="select"] [role="button"] > div:first-child {
+    min-width: 0 !important;
+    max-width: calc(100% - 28px) !important;
+    overflow: visible !important;
+}
+
+.st-key-dashboard_filters [data-baseweb="select"] [role="button"] > div:first-child > div {
+    max-width: none !important;
+    width: max-content !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+}
+
+/* Keep the visible control itself wide and compact. */
+.st-key-dashboard_filters [data-testid="stSelectbox"] {
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+.st-key-dashboard_filters [data-testid="stSelectbox"] label {
+    white-space: nowrap !important;
+}
+
 /* Responsive fallback: on narrower screens stack the filters instead
    of squeezing them until Streamlit clips their text. */
 @media (max-width: 1100px) {
@@ -2574,7 +2632,7 @@ def render_dashboard():
         # Use two rows instead of squeezing six filters into one row.
         # This is the reliable fix for Streamlit/BaseWeb clipping.
         r1 = st.columns([1.35, 1.35, 1.35], gap="small")
-        r2 = st.columns([1.55, 1.55, 1.35], gap="small")
+        r2 = st.columns([2.05, 1.85, 1.35], gap="small")
         f1, f2, f3 = r1
         f4, f5, f6 = r2
 

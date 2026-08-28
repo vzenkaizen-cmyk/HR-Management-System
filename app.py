@@ -49,7 +49,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background: linear-gradient(135deg,#f7fbff 0%,#edf6ff 52%,#e5f0fa 100%) !important;
 }
 .main .block-container {
-    max-width: 1280px;
+    max-width: 1400px;
     padding-top: 1.25rem;
     padding-bottom: 3rem;
 }
@@ -85,31 +85,60 @@ div[data-baseweb="base-input"] input,
 }
 div[data-baseweb="select"] * { color:#173f5c !important; }
 
-/* Selectboxes: keep selected values readable and long dropdown options visible. */
-div[data-baseweb="select"] [role="button"] {
+/* Selectboxes: give every dashboard filter enough room for its full value. */
+[data-testid="stSelectbox"] {
+    width: 100% !important;
     min-width: 0 !important;
 }
-div[data-baseweb="select"] [role="button"] > div {
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] {
+    width: 100% !important;
     min-width: 0 !important;
 }
-div[data-baseweb="select"] [role="button"] span {
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div {
+    min-width: 0 !important;
+}
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] span {
     white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
 }
 
-/* Dropdown menu: enough room for Japanese Management Systems and month names. */
+/* Dropdowns should be only as wide as their longest option, not an
+   unnecessarily large fixed 300px box. This also keeps the full
+   "Japanese Management Systems" option visible. */
 div[data-baseweb="popover"] {
-    min-width: 300px !important;
+    min-width: 0 !important;
+    width: max-content !important;
+    max-width: none !important;
 }
+
 div[data-baseweb="popover"] [role="listbox"] {
-    min-width: 300px !important;
+    min-width: 0 !important;
+    width: max-content !important;
+    max-width: none !important;
 }
+
 div[data-baseweb="popover"] [role="option"] {
     white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    padding-right: 20px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+/* Dashboard filter row: prevent narrow columns from causing ellipses. */
+[data-testid="stHorizontalBlock"] {
+    min-width: 0 !important;
 }
 
 /* Buttons */
@@ -2494,11 +2523,12 @@ def render_dashboard():
     # MAIN FILTERS
     # ------------------------------------------------------------
     with st.container(border=True):
-        # Use balanced widths so Location, Year, Quarter, Training Type,
-        # and Category are all clearly readable. Extra width is retained
-        # for long values such as "Japanese Management Systems".
+        # Wider, balanced filter columns keep Location, Year, Quarter,
+        # Category and Month readable, while giving Training Type enough
+        # room for the full "Japanese Management Systems" value.
         f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.18, 1.03, 1.08, 1.88, 1.48, 1.35]
+            [1.35, 1.15, 1.20, 2.20, 1.75, 1.45],
+            gap="small",
         )
 
         locations = ["All Locations"] + sorted(

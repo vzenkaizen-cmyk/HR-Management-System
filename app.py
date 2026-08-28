@@ -434,7 +434,7 @@ TRAINING_TYPES = [
 ]
 
 TRAINING_CATEGORIES = [
-    "Internal Training",
+    "Internal (Cooperate Trainings)",
     "External Training",
     "Overseas Training",
     "Management Training",
@@ -570,7 +570,7 @@ def ensure_training_schema():
               AND column_name='category'
         ) THEN
             ALTER TABLE public.training_records
-                ADD COLUMN category VARCHAR(100) DEFAULT 'Internal Training';
+                ADD COLUMN category VARCHAR(100) DEFAULT 'Internal (Cooperate Trainings)';
         END IF;
 
         IF NOT EXISTS (
@@ -733,7 +733,7 @@ def ensure_training_schema():
         -- -------------------------
         -- Safe category migration
         -- Existing records without a category are classified as
-        -- Internal Training so all legacy data remains reportable.
+        -- Internal (Cooperate Trainings) so all legacy data remains reportable.
         -- -------------------------
         ALTER TABLE public.training_records
             DROP CONSTRAINT IF EXISTS training_records_category_check;
@@ -743,14 +743,14 @@ def ensure_training_schema():
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Training'
-            ELSE 'Internal Training'
+            ELSE 'Internal (Cooperate Trainings)'
         END;
 
         ALTER TABLE public.training_records
             ADD CONSTRAINT training_records_category_check
             CHECK (
                 category IN (
-                    'Internal Training',
+                    'Internal (Cooperate Trainings)',
                     'External Training',
                     'Overseas Training',
                     'Management Training'
@@ -821,11 +821,11 @@ def ensure_training_schema():
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%external%' THEN 'External Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%overseas%' THEN 'Overseas Training'
             WHEN LOWER(TRIM(COALESCE(category,''))) LIKE '%management%' THEN 'Management Training'
-            ELSE 'Internal Training'
+            ELSE 'Internal (Cooperate Trainings)'
         END
         WHERE category IS NULL OR TRIM(category) = ''
            OR category NOT IN (
-                'Internal Training',
+                'Internal (Cooperate Trainings)',
                 'External Training',
                 'Overseas Training',
                 'Management Training'
@@ -835,7 +835,7 @@ def ensure_training_schema():
             ADD CONSTRAINT training_budgets_category_check
             CHECK (
                 category IN (
-                    'Internal Training',
+                    'Internal (Cooperate Trainings)',
                     'External Training',
                     'Overseas Training',
                     'Management Training'
@@ -1032,7 +1032,7 @@ def get_training_records():
     for col, default in [
         ("power_plant", "Not Specified"),
         ("trainer_name", ""),
-        ("category", "Internal Training"),
+        ("category", "Internal (Cooperate Trainings)"),
         ("location", "Not Specified"),
     ]:
         if col not in df.columns:
@@ -1277,7 +1277,7 @@ def get_budget_records():
     df["budget_year"] = pd.to_numeric(df["budget_year"], errors="coerce").fillna(0).astype(int)
     df["budget_amount"] = pd.to_numeric(df["budget_amount"], errors="coerce").fillna(0)
     df["location"] = df["location"].fillna("Not Specified").astype(str).str.strip()
-    df["category"] = df["category"].fillna("Internal Training").astype(str).str.strip()
+    df["category"] = df["category"].fillna("Internal (Cooperate Trainings)").astype(str).str.strip()
 
     return df
 
@@ -1470,7 +1470,7 @@ def prepare_excel_dataframe(uploaded_file):
     optional_defaults = {
         "to_date": None,
         "quarter": None,
-        "category": "Internal Training",
+        "category": "Internal (Cooperate Trainings)",
         "trainer_name": "",
         "participant_names": "",
         "total_hours": None,
@@ -1666,9 +1666,9 @@ def normalize_category(value):
     if "management" in text:
         return "Management Training"
     if "internal" in text:
-        return "Internal Training"
+        return "Internal (Cooperate Trainings)"
 
-    return "Internal Training"
+    return "Internal (Cooperate Trainings)"
 
 
 def normalize_quarter(value, from_date):
@@ -2377,7 +2377,7 @@ def render_import_excel():
                 The Excel Total Hours value is not trusted.
                 The system recalculates it for every imported row.
                 If Category is missing, the record is classified as
-                Internal Training.
+                Internal (Cooperate Trainings).
             </div>
         </div>
         """,
@@ -2410,7 +2410,7 @@ def render_import_excel():
         if "category" not in source_df.columns:
             st.info(
                 "No Category column was found. "
-                "Imported records will use Internal Training."
+                "Imported records will use Internal (Cooperate Trainings)."
             )
 
         cleaned, validation_errors = transform_import_rows(
@@ -3593,7 +3593,7 @@ def render_records():
 
             current_category = str(
                 row["category"]
-                or "Internal Training"
+                or "Internal (Cooperate Trainings)"
             )
 
             categories = TRAINING_CATEGORIES.copy()
@@ -3807,6 +3807,209 @@ def render_records():
                 )
 
 
+
+# ============================================================
+# BUDGET EXCEL IMPORT HELPERS
+# ============================================================
+
+BUDGET_EXCEL_CATEGORY_MAP = {
+    "external": "External Training",
+    "external training": "External Training",
+    "internal": "Internal (Cooperate Trainings)",
+    "internal training": "Internal (Cooperate Trainings)",
+    "internal (cooperate trainings)": "Internal (Cooperate Trainings)",
+    "internal (corporate trainings)": "Internal (Cooperate Trainings)",
+    "management": "Management Training",
+    "management training": "Management Training",
+    "overseas": "Overseas Training",
+    "overseas training": "Overseas Training",
+    "oversease": "Overseas Training",
+}
+
+
+def _clean_budget_header(value):
+    if value is None or pd.isna(value):
+        return ""
+    text = str(value).strip().lower()
+    text = re.sub(r"[\r\n]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def normalize_budget_category(value):
+    text = _clean_budget_header(value)
+    return BUDGET_EXCEL_CATEGORY_MAP.get(text)
+
+
+def normalize_budget_location(value):
+    """
+    Website plant/site names are authoritative.
+    Excel values are matched case-insensitively and whitespace is ignored,
+    then converted to the exact website spelling.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    lookup = {
+        str(location).strip().casefold(): location
+        for location in BUDGET_LOCATIONS
+    }
+    return lookup.get(text.casefold())
+
+
+def parse_budget_excel(uploaded_file):
+    """
+    Parse the Budget(2).xlsx layout:
+      - locate the row containing the budget category headers
+      - the site/location column is immediately before the first category
+      - ignore blank rows and the Total row
+      - return one row per Site + Category with a numeric amount
+    """
+    file_name = str(getattr(uploaded_file, "name", "")).lower()
+
+    if file_name.endswith(".csv"):
+        raw = pd.read_csv(uploaded_file, header=None)
+    else:
+        raw = pd.read_excel(uploaded_file, header=None)
+
+    if raw.empty:
+        raise ValueError("The uploaded Budget Excel file is empty.")
+
+    category_columns = {}
+    header_row = None
+
+    for row_index in range(len(raw)):
+        row_values = raw.iloc[row_index].tolist()
+
+        found = {}
+        for col_index, value in enumerate(row_values):
+            category = normalize_budget_category(value)
+            if category and category not in found.values():
+                found[col_index] = category
+
+        if len(found) >= 2:
+            header_row = row_index
+            category_columns = found
+            break
+
+    if header_row is None:
+        raise ValueError(
+            "Could not find the budget category header row. "
+            "Expected columns such as External, Internal (Cooperate Trainings), "
+            "Management and Overseas."
+        )
+
+    first_category_col = min(category_columns.keys())
+
+    if first_category_col <= 0:
+        raise ValueError(
+            "Could not identify the Plant/Site column in the Budget Excel file."
+        )
+
+    location_col = first_category_col - 1
+
+    records = []
+    unmatched_sites = []
+    ignored_rows = []
+
+    for row_index in range(header_row + 1, len(raw)):
+        row = raw.iloc[row_index]
+
+        location_raw = row.iloc[location_col] if location_col < len(row) else None
+        location_text = str(location_raw or "").strip()
+
+        if not location_text:
+            continue
+
+        if location_text.casefold() in {"total", "grand total", "subtotal"}:
+            break
+
+        location = normalize_budget_location(location_text)
+
+        if location is None:
+            unmatched_sites.append(location_text)
+            continue
+
+        for col_index, category in sorted(category_columns.items()):
+            value = row.iloc[col_index] if col_index < len(row) else None
+
+            if value is None or pd.isna(value) or str(value).strip() == "":
+                continue
+
+            amount = parse_number(value, default=0.0)
+
+            if amount < 0:
+                raise ValueError(
+                    f"Negative budget amount found for {location} - {category}."
+                )
+
+            # Do not create unnecessary zero-value records.
+            if amount == 0:
+                continue
+
+            records.append(
+                {
+                    "location": location,
+                    "category": category,
+                    "budget_amount": float(amount),
+                    "excel_row": row_index + 1,
+                }
+            )
+
+    budget_df = pd.DataFrame(
+        records,
+        columns=[
+            "location",
+            "category",
+            "budget_amount",
+            "excel_row",
+        ],
+    )
+
+    if budget_df.empty and unmatched_sites:
+        raise ValueError(
+            "No valid budget rows were found. Unmatched plant/site names: "
+            + ", ".join(sorted(set(unmatched_sites)))
+        )
+
+    # If the same Site + Category appears more than once, add the amounts.
+    if not budget_df.empty:
+        budget_df = (
+            budget_df.groupby(
+                ["location", "category"],
+                as_index=False,
+                sort=False,
+            )
+            .agg(
+                budget_amount=("budget_amount", "sum"),
+                excel_row=("excel_row", "min"),
+            )
+        )
+
+    return budget_df, sorted(set(unmatched_sites)), header_row + 1
+
+
+def import_budget_dataframe(budget_df, budget_year, created_by):
+    """
+    Save imported budgets using the same safe upsert logic as manual entry.
+    """
+    saved = 0
+
+    for _, row in budget_df.iterrows():
+        save_budget_record(
+            None,
+            int(budget_year),
+            row["location"],
+            row["category"],
+            float(row["budget_amount"]),
+            created_by,
+        )
+        saved += 1
+
+    return saved
+
+
 # ============================================================
 # BUDGET ENTRY
 # ============================================================
@@ -3837,13 +4040,132 @@ def render_budget_entry():
             </div>
             <div class="small-note">
                 Categories:
-                Internal Training · External Training ·
+                Internal (Cooperate Trainings) · External Training ·
                 Overseas Training · Management Training
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    # ========================================================
+    # BUDGET EXCEL IMPORT
+    # ========================================================
+    with st.container(border=True):
+        st.subheader("📥 Import Budget Excel")
+        st.caption(
+            "Upload the prepared budget workbook. Website plant/site names "
+            "are used as the master names. Existing Year + Location + Category "
+            "records are updated instead of duplicated."
+        )
+
+        import_year = st.number_input(
+            "Budget Year for this Excel *",
+            min_value=2020,
+            max_value=2100,
+            value=date.today().year,
+            step=1,
+            format="%d",
+            key="budget_excel_year",
+        )
+
+        uploaded_budget = st.file_uploader(
+            "Choose Budget Excel file",
+            type=["xlsx", "xls", "csv"],
+            key="budget_excel_upload",
+            help=(
+                "The workbook should contain the plant/site names and "
+                "the External, Internal (Cooperate Trainings), Management "
+                "and Overseas budget columns."
+            ),
+        )
+
+        if uploaded_budget is not None:
+            try:
+                preview_df, unmatched_sites, _ = parse_budget_excel(
+                    uploaded_budget
+                )
+
+                if unmatched_sites:
+                    st.warning(
+                        "These plant/site names are not in the website's "
+                        "configured plant list and were not imported: "
+                        + ", ".join(unmatched_sites)
+                    )
+
+                if preview_df.empty:
+                    st.error("No valid budget amounts were found in the file.")
+                else:
+                    preview_display = preview_df.copy()
+                    preview_display["Budget Amount (Rs.)"] = (
+                        preview_display["budget_amount"]
+                    )
+                    preview_display = preview_display[
+                        [
+                            "location",
+                            "category",
+                            "Budget Amount (Rs.)",
+                            "excel_row",
+                        ]
+                    ]
+                    preview_display.columns = [
+                        "Plant / Site",
+                        "Category",
+                        "Budget Amount (Rs.)",
+                        "Excel Row",
+                    ]
+
+                    st.write("**Preview of budgets to be imported:**")
+                    st.dataframe(
+                        preview_display,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    total_import = float(
+                        preview_df["budget_amount"].sum()
+                    )
+                    st.metric(
+                        "Total Budget in Preview",
+                        f"Rs. {total_import:,.2f}",
+                    )
+
+                    if st.button(
+                        "Import Budget to Database",
+                        type="primary",
+                        use_container_width=True,
+                        key="import_budget_excel_button",
+                    ):
+                        try:
+                            saved_count = import_budget_dataframe(
+                                preview_df,
+                                int(import_year),
+                                user.get("id"),
+                            )
+
+                            st.success(
+                                f"{saved_count} budget entries imported "
+                                f"successfully for {int(import_year)}. "
+                                "Existing matching entries were updated."
+                            )
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(
+                                "Unable to import the budget Excel file."
+                            )
+                            with st.expander("Technical details"):
+                                st.exception(e)
+
+            except Exception as e:
+                st.error(
+                    "Unable to read the Budget Excel file. "
+                    "Please check the workbook format."
+                )
+                with st.expander("Technical details"):
+                    st.exception(e)
+
+    st.divider()
 
     # Budget Entry supports all configured company locations.
     # BUDGET_LOCATIONS is based on KNOWN_LOCATIONS and therefore includes

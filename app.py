@@ -49,9 +49,12 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background: linear-gradient(135deg,#f7fbff 0%,#edf6ff 52%,#e5f0fa 100%) !important;
 }
 .main .block-container {
-    max-width: 1400px;
-    padding-top: 1.25rem;
-    padding-bottom: 3rem;
+    max-width: none !important;
+    width: 100% !important;
+    padding-top: 1.25rem !important;
+    padding-bottom: 3rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
 }
 [data-testid="stSidebarNav"] { display:none !important; }
 #MainMenu, footer { visibility:hidden !important; }
@@ -85,45 +88,89 @@ div[data-baseweb="base-input"] input,
 }
 div[data-baseweb="select"] * { color:#173f5c !important; }
 
-/* Selectboxes: give every dashboard filter enough room for its full value. */
+/* ============================================================
+   DASHBOARD FILTERS — FULL TEXT, NO ELLIPSIS
+   ============================================================ */
 [data-testid="stSelectbox"] {
     width: 100% !important;
     min-width: 0 !important;
 }
 
-[data-testid="stSelectbox"] div[data-baseweb="select"] {
+[data-testid="stSelectbox"] > div {
     width: 100% !important;
     min-width: 0 !important;
 }
 
+[data-testid="stSelectbox"] div[data-baseweb="select"],
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+/* The BaseWeb select button is a flex row. The first child contains
+   the selected text; let it use all available width instead of the
+   default overflow/ellipsis behaviour. */
 [data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] {
     width: 100% !important;
     min-width: 0 !important;
     display: flex !important;
     align-items: center !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div {
-    min-width: 0 !important;
-}
-
-[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] span {
-    white-space: nowrap !important;
     overflow: visible !important;
+}
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+}
+
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child * {
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
     text-overflow: clip !important;
 }
 
-/* Dropdowns should be only as wide as their longest option, not an
-   unnecessarily large fixed 300px box. This also keeps the full
-   "Japanese Management Systems" option visible. */
-div[data-baseweb="popover"] {
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] span,
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] p {
+    display: block !important;
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+}
+
+/* Remove excess horizontal padding inside the selected-value area. */
+[data-testid="stSelectbox"] div[data-baseweb="select"] [role="button"] > div:first-child {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Give the dashboard filter row more usable width. */
+.st-key-dashboard_filters {
+    width: 100% !important;
+}
+
+.st-key-dashboard_filters [data-testid="stHorizontalBlock"] {
+    width: 100% !important;
+    gap: 0.55rem !important;
+}
+
+.st-key-dashboard_filters [data-testid="column"] {
     min-width: 0 !important;
+}
+
+/* Keep the dropdown itself readable when opened. */
+div[data-baseweb="popover"] {
+    min-width: max-content !important;
     width: max-content !important;
     max-width: none !important;
 }
 
 div[data-baseweb="popover"] [role="listbox"] {
-    min-width: 0 !important;
+    min-width: max-content !important;
     width: max-content !important;
     max-width: none !important;
 }
@@ -134,11 +181,6 @@ div[data-baseweb="popover"] [role="option"] {
     text-overflow: clip !important;
     padding-left: 12px !important;
     padding-right: 12px !important;
-}
-
-/* Dashboard filter row: prevent narrow columns from causing ellipses. */
-[data-testid="stHorizontalBlock"] {
-    min-width: 0 !important;
 }
 
 /* Buttons */
@@ -2522,12 +2564,12 @@ def render_dashboard():
     # ------------------------------------------------------------
     # MAIN FILTERS
     # ------------------------------------------------------------
-    with st.container(border=True):
-        # Wider, balanced filter columns keep Location, Year, Quarter,
-        # Category and Month readable, while giving Training Type enough
-        # room for the full "Japanese Management Systems" value.
+    with st.container(border=True, key="dashboard_filters"):
+        # Deliberately balanced widths: every selected value is visible
+        # without "...", while Training Type gets extra room for
+        # "Japanese Management Systems".
         f1, f2, f3, f4, f5, f6 = st.columns(
-            [1.35, 1.15, 1.20, 2.20, 1.75, 1.45],
+            [1.45, 1.15, 1.25, 2.25, 1.75, 1.45],
             gap="small",
         )
 

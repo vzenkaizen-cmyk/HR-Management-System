@@ -3953,7 +3953,6 @@ def parse_budget_excel(uploaded_file):
                     "location": location,
                     "category": category,
                     "budget_amount": float(amount),
-                    "excel_row": row_index + 1,
                 }
             )
 
@@ -3963,7 +3962,6 @@ def parse_budget_excel(uploaded_file):
             "location",
             "category",
             "budget_amount",
-            "excel_row",
         ],
     )
 
@@ -3983,7 +3981,6 @@ def parse_budget_excel(uploaded_file):
             )
             .agg(
                 budget_amount=("budget_amount", "sum"),
-                excel_row=("excel_row", "min"),
             )
         )
 
@@ -4096,30 +4093,106 @@ def render_budget_entry():
                 if preview_df.empty:
                     st.error("No valid budget amounts were found in the file.")
                 else:
-                    preview_display = preview_df.copy()
-                    preview_display["Budget Amount (Rs.)"] = (
-                        preview_display["budget_amount"]
+                    # ------------------------------------------------
+                    # Excel-style preview
+                    # Show one row per Plant / Site and one separate
+                    # column for each budget category, matching the
+                    # structure of the uploaded workbook.
+                    # ------------------------------------------------
+                    preview_categories = [
+                        "External Training",
+                        "Internal (Cooperate Trainings)",
+                        "Management Training",
+                        "Overseas Training",
+                    ]
+
+                    preview_display = (
+                        preview_df.pivot_table(
+                            index="location",
+                            columns="category",
+                            values="budget_amount",
+                            aggfunc="sum",
+                            fill_value=0,
+                        )
+                        .reindex(columns=preview_categories, fill_value=0)
+                        .reset_index()
                     )
+
+                    # Add a row total for every Plant / Site.
+                    preview_display["Total"] = preview_display[
+                        preview_categories
+                    ].sum(axis=1)
+
+                    preview_display = preview_display.rename(
+                        columns={"location": "Plant / Site"}
+                    )
+
+                    # Keep the same column order as the Excel budget sheet.
                     preview_display = preview_display[
                         [
-                            "location",
-                            "category",
-                            "Budget Amount (Rs.)",
+                            "Plant / Site",
+                            "External Training",
+                            "Internal (Cooperate Trainings)",
+                            "Management Training",
+                            "Overseas Training",
+                            "Total",
                         ]
                     ]
-                    preview_display.columns = [
-                        "Plant / Site",
-                        "Category",
-                        "Budget Amount (Rs.)",
-                    ]
+
+                    # Add a grand total row, exactly like the Excel sheet.
+                    grand_total = {"Plant / Site": "Total"}
+                    for column in preview_display.columns[1:]:
+                        grand_total[column] = float(
+                            preview_display[column].sum()
+                        )
+
+                    preview_display = pd.concat(
+                        [
+                            preview_display,
+                            pd.DataFrame([grand_total]),
+                        ],
+                        ignore_index=True,
+                    )
 
                     st.write("**Preview of budgets to be imported:**")
                     st.dataframe(
                         preview_display,
                         use_container_width=True,
                         hide_index=True,
+                        column_config={
+                            "Plant / Site": st.column_config.TextColumn(
+                                "Plant / Site",
+                                width="medium",
+                            ),
+                            "External Training": st.column_config.NumberColumn(
+                                "External Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Internal (Cooperate Trainings)": st.column_config.NumberColumn(
+                                "Internal (Cooperate Trainings)",
+                                format="Rs. %d",
+                                width="large",
+                            ),
+                            "Management Training": st.column_config.NumberColumn(
+                                "Management Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Overseas Training": st.column_config.NumberColumn(
+                                "Overseas Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Total": st.column_config.NumberColumn(
+                                "Total",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                        },
                     )
 
+                    # Use the normalized records for the actual import total.
                     total_import = float(
                         preview_df["budget_amount"].sum()
                     )

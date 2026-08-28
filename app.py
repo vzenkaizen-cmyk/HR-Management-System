@@ -247,6 +247,13 @@ div[data-baseweb="popover"] [role="option"] {
     }
 }
 
+@media (max-width: 900px) {
+    [data-testid="stMetricLabel"] > div,
+    [data-testid="stMetricLabel"] p {
+        white-space: normal !important;
+    }
+}
+
 /* Buttons */
 .stButton > button,.stFormSubmitButton > button,.stDownloadButton > button {
     min-height:42px !important;
@@ -334,6 +341,22 @@ section[data-testid="stSidebar"] .stButton > button * {
     white-space:nowrap !important;
     overflow:visible !important;
     text-overflow:clip !important;
+}
+
+/* Metric cards: use the full column width and never shorten labels. */
+[data-testid="stMetric"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 16px 18px !important;
+}
+[data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] p {
+    width: 100% !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
 /* File uploader */
@@ -2799,31 +2822,39 @@ def render_dashboard():
 
         st.write("")
 
-        k = st.columns(
-            [1.35, 1.0, 1.12, 1.42, 1.45, 1.0]
-        )
+        # Six metric cards were previously squeezed into one row, which
+        # caused Streamlit to truncate labels such as "Workers Attended"
+        # and "Avg. Hours / Programme" with "...".
+        # Use two rows of three equal-width cards so every label has
+        # enough real screen width and remains fully readable.
+        k1, k2, k3 = st.columns(3, gap="medium")
 
-        k[0].metric(
+        k1.metric(
             "Training Programmes",
             f"{programmes:,}",
         )
-        k[1].metric(
+        k2.metric(
             "Workers Attended",
             f"{workers:,.0f}",
         )
-        k[2].metric(
+        k3.metric(
             "Total Training Hours",
             f"{total_hours:,.1f}",
         )
-        k[3].metric(
+
+        st.write("")
+
+        k4, k5, k6 = st.columns(3, gap="medium")
+
+        k4.metric(
             "Avg. Hours / Programme",
             f"{avg_hours_per_programme:,.1f}",
         )
-        k[4].metric(
+        k5.metric(
             "Training Cost",
             f"Rs. {total_cost:,.0f}",
         )
-        k[5].metric(
+        k6.metric(
             "Hours / Worker",
             f"{avg_hours_per_worker:,.1f}",
         )

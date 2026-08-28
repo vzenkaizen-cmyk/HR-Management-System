@@ -3860,11 +3860,19 @@ def normalize_budget_location(value):
 
 def parse_budget_excel(uploaded_file):
     """
-    Parse the Budget(2).xlsx layout:
-      - locate the row containing the budget category headers
-      - the site/location column is immediately before the first category
-      - ignore blank rows and the Total row
-      - return one row per Site + Category with a numeric amount
+    Parse the Budget Excel layout.
+
+    Important HOF rule:
+      The supplied Excel workbook has Rs. 2,000,000 in the GRAND TOTAL
+      row under Overseas, while the HOF row itself is blank in the
+      Overseas column. That Rs. 2,000,000 belongs to HOF for database
+      purposes.
+
+    Therefore:
+      - the imported database record is HOF + Overseas Training + Rs. 2,000,000
+      - the Excel-style preview keeps the workbook appearance: HOF's
+        Overseas cell remains blank and the Grand Total row remains
+        Rs. 2,000,000.
     """
     file_name = str(getattr(uploaded_file, "name", "")).lower()
 
@@ -3913,6 +3921,10 @@ def parse_budget_excel(uploaded_file):
     unmatched_sites = []
     ignored_rows = []
 
+    # Store the workbook's Grand Total values separately so that the
+    # Excel-style preview can remain visually faithful to the source.
+    excel_grand_totals = {}
+
     for row_index in range(header_row + 1, len(raw)):
         row = raw.iloc[row_index]
 
@@ -3923,6 +3935,22 @@ def parse_budget_excel(uploaded_file):
             continue
 
         if location_text.casefold() in {"total", "grand total", "subtotal"}:
+            # Capture the workbook Grand Total row, but do not import it
+            # as a separate location.
+            for col_index, category in sorted(category_columns.items()):
+                value = row.iloc[col_index] if col_index < len(row) else None
+
+                if value is None or pd.isna(value) or str(value).strip() == "":
+                    continue
+
+                amount = parse_number(value, default=0.0)
+
+                if amount < 0:
+                    raise ValueError(
+                        f"Negative grand total found for {category}."
+                    )
+
+                excel_grand_totals[category] = float(amount)
             break
 
         location = normalize_budget_location(location_text)
@@ -3944,7 +3972,6 @@ def parse_budget_excel(uploaded_file):
                     f"Negative budget amount found for {location} - {category}."
                 )
 
-            # Do not create unnecessary zero-value records.
             if amount == 0:
                 continue
 
@@ -3971,6 +3998,55 @@ def parse_budget_excel(uploaded_file):
             + ", ".join(sorted(set(unmatched_sites)))
         )
 
+    # ------------------------------------------------------------
+    # SPECIAL CASE FROM THE PROVIDED EXCEL:
+    # Overseas Grand Total = Rs. 2,000,000, while HOF has no
+    # row-level Overseas value. The amount belongs to HOF.
+    #
+    # Only apply this when:
+    #   1. a Grand Total Overseas value exists,
+    #   2. HOF is a configured website location, and
+    #   3. there is no row-level Overseas value already imported.
+    # ------------------------------------------------------------
+    overseas_category = "Overseas Training"
+    excel_overseas_total = float(
+        excel_grand_totals.get(overseas_category, 0.0)
+    )
+
+    row_level_overseas = 0.0
+    if not budget_df.empty:
+        overseas_rows = budget_df[
+            budget_df["category"] == overseas_category
+        ]
+        if not overseas_rows.empty:
+            row_level_overseas = float(
+                overseas_rows["budget_amount"].sum()
+            )
+
+    hof_location = normalize_budget_location("HOF")
+
+    if (
+        excel_overseas_total > 0
+        and hof_location
+        and row_level_overseas == 0
+    ):
+        records.append(
+            {
+                "location": hof_location,
+                "category": overseas_category,
+                "budget_amount": excel_overseas_total,
+            }
+        )
+
+        budget_df = pd.DataFrame(
+            records,
+            columns=[
+                "location",
+                "category",
+                "budget_amount",
+            ],
+        )
+
     # If the same Site + Category appears more than once, add the amounts.
     if not budget_df.empty:
         budget_df = (
@@ -3983,6 +4059,15 @@ def parse_budget_excel(uploaded_file):
                 budget_amount=("budget_amount", "sum"),
             )
         )
+
+    # Keep the original workbook total information available to the
+    # Excel-style preview without changing what is imported.
+    budget_df.attrs["excel_grand_totals"] = excel_grand_totals
+    budget_df.attrs["excel_overseas_total_only"] = (
+        excel_overseas_total > 0
+        and hof_location is not None
+        and row_level_overseas == 0
+    )
 
     return budget_df, sorted(set(unmatched_sites)), header_row + 1
 
@@ -4118,6 +4203,34 @@ def render_budget_entry():
                         .reset_index()
                     )
 
+                    # ------------------------------------------------
+                    # Preserve the Excel screenshot appearance.
+                    #
+                    # In the source workbook, HOF's Overseas cell is
+                    # blank, while Rs. 2,000,000 appears only in the
+                    # Grand Total row. The database still receives that
+                    # amount against HOF + Overseas Training.
+                    # ------------------------------------------------
+                    excel_grand_totals = preview_df.attrs.get(
+                        "excel_grand_totals", {}
+                    )
+                    overseas_total_only = preview_df.attrs.get(
+                        "excel_overseas_total_only", False
+                    )
+
+                    if overseas_total_only:
+                        hof_mask = (
+                            preview_display["location"].astype(str).str.strip().str.casefold()
+                            == "hof"
+                        )
+
+                        if hof_mask.any():
+                            # Keep HOF Overseas blank/zero in the display,
+                            # exactly as shown in the Excel source.
+                            preview_display.loc[
+                                hof_mask, "Overseas Training"
+                            ] = 0.0
+
                     # Add a row total for every Plant / Site.
                     preview_display["Total"] = preview_display[
                         preview_categories
@@ -4127,7 +4240,6 @@ def render_budget_entry():
                         columns={"location": "Plant / Site"}
                     )
 
-                    # Keep the same column order as the Excel budget sheet.
                     preview_display = preview_display[
                         [
                             "Plant / Site",
@@ -4139,12 +4251,52 @@ def render_budget_entry():
                         ]
                     ]
 
-                    # Add a grand total row, exactly like the Excel sheet.
+                    # Keep the Grand Total exactly as represented by the
+                    # uploaded Excel workbook where possible.
                     grand_total = {"Plant / Site": "Total"}
+
                     for column in preview_display.columns[1:]:
-                        grand_total[column] = float(
-                            preview_display[column].sum()
-                        )
+                        category_for_total = column
+
+                        if category_for_total == "Total":
+                            # Workbook Total is the sum of the displayed
+                            # category totals, including the separate
+                            # Overseas grand total.
+                            category_total = float(
+                                preview_display[
+                                    [
+                                        "External Training",
+                                        "Internal (Cooperate Trainings)",
+                                        "Management Training",
+                                    ]
+                                ].sum().sum()
+                            )
+
+                            if overseas_total_only:
+                                category_total += float(
+                                    excel_grand_totals.get(
+                                        "Overseas Training", 0.0
+                                    )
+                                )
+                            else:
+                                category_total += float(
+                                    preview_display["Overseas Training"].sum()
+                                )
+
+                            grand_total[column] = category_total
+                        elif (
+                            category_for_total == "Overseas Training"
+                            and overseas_total_only
+                        ):
+                            grand_total[column] = float(
+                                excel_grand_totals.get(
+                                    "Overseas Training", 0.0
+                                )
+                            )
+                        else:
+                            grand_total[column] = float(
+                                preview_display[category_for_total].sum()
+                            )
 
                     preview_display = pd.concat(
                         [

@@ -2730,7 +2730,7 @@ def render_dashboard():
         f1, f2, f3 = r1
         f4, f5, f6 = r2
 
-        locations = ["All Locations"] + sorted(
+        locations = ["All Plant Sites"] + sorted(
             set(
                 KNOWN_LOCATIONS
                 + df["location"]
@@ -2743,7 +2743,7 @@ def render_dashboard():
         )
 
         selected_location = f1.selectbox(
-            "Location",
+            "Plant Site",
             locations,
             key="dash_location",
         )
@@ -2829,7 +2829,7 @@ def render_dashboard():
 
     filtered = df.copy()
 
-    if selected_location != "All Locations":
+    if selected_location != "All Plant Sites":
         filtered = filtered[
             filtered["location"].astype(str).str.strip()
             == selected_location
@@ -3038,8 +3038,9 @@ def render_dashboard():
     st.header("Budget vs Actuals")
     st.caption(
         "Actuals are calculated from Training Cost. "
-        "Budget values come from the separate Budget Entry section. "
-        "Use the Location or Category selector below to compare Budget vs Actual."
+        "Budget values come from the Budget Entry section. "
+        "Select a Plant Site to compare that site's Budget vs Actual. "
+        "The database column remains named location for compatibility."
     )
 
     budget_df = get_budget_records()
@@ -3047,8 +3048,7 @@ def render_dashboard():
     if budget_df.empty:
         st.info(
             "No budgets have been entered yet. "
-            "Use Budget Entry to add budgets by Location "
-            "and Category."
+            "Use Budget Entry to add budgets by Plant Site and Category."
         )
     else:
         budget_years = sorted(
@@ -3070,90 +3070,96 @@ def render_dashboard():
             key="budget_dash_year",
         )
 
-        st.subheader(
-            "1. Select Location — Budget vs Actual"
-        )
+        st.subheader("1. Select Plant Site — Budget vs Actual")
 
         b1, b2, b3, b4 = st.columns(4)
 
-        # Budget comparison supports all configured company locations.
+        # Budget records use the existing database field `location`,
+        # but the user-facing meaning is Plant Site.
         budget_df = budget_df[
             budget_df["location"].astype(str).str.strip().isin(BUDGET_LOCATIONS)
         ].copy()
 
-        budget_locations = ["All Locations"] + BUDGET_LOCATIONS
+        plant_sites = ["All Plant Sites"] + BUDGET_LOCATIONS
 
-        budget_location = b1.selectbox(
-            "Select Location",
-            budget_locations,
-            key="budget_dash_location",
+        budget_plant_site = b1.selectbox(
+            "Select Plant Site",
+            plant_sites,
+            key="budget_dash_plant_site",
         )
 
-        location_actual_df = df.copy()
-        location_actual_df = location_actual_df[
-            location_actual_df["from_date"].dt.year
-            == int(b_year)
-        ]
+        # --------------------------------------------------------
+        # Build a single Plant Site field for actual training data.
+        # Existing records normally store the site in `location`.
+        # If that is blank/non-standard, fall back to `power_plant`.
+        # This keeps old records working while making Plant Site
+        # selection consistent with the budget sheet.
+        # --------------------------------------------------------
+        location_series = (
+            df["location"].fillna("").astype(str).str.strip()
+            if "location" in df.columns
+            else pd.Series("", index=df.index)
+        )
+        power_plant_series = (
+            df["power_plant"].fillna("").astype(str).str.strip()
+            if "power_plant" in df.columns
+            else pd.Series("", index=df.index)
+        )
 
-        if budget_location != "All Locations":
-            location_actual_df = location_actual_df[
-                location_actual_df["location"]
-                .astype(str)
-                .str.strip()
-                == budget_location
-            ]
+        actual_plant_site = location_series.copy()
+        fallback_mask = (
+            ~actual_plant_site.isin(BUDGET_LOCATIONS)
+            & power_plant_series.isin(BUDGET_LOCATIONS)
+        )
+        actual_plant_site.loc[fallback_mask] = power_plant_series.loc[fallback_mask]
 
-        location_budget_df = budget_df[
+        budget_actual_df = df.copy()
+        budget_actual_df["plant_site"] = actual_plant_site
+        budget_actual_df = budget_actual_df[
+            budget_actual_df["from_date"].dt.year == int(b_year)
+        ].copy()
+
+        selected_budget_df = budget_df[
             budget_df["budget_year"] == int(b_year)
         ].copy()
 
-        if budget_location != "All Locations":
-            location_budget_df = location_budget_df[
-                location_budget_df["location"]
-                .astype(str)
-                .str.strip()
-                == budget_location
+        if budget_plant_site != "All Plant Sites":
+            selected_budget_df = selected_budget_df[
+                selected_budget_df["location"].astype(str).str.strip()
+                == budget_plant_site
             ]
+            selected_actual_df = budget_actual_df[
+                budget_actual_df["plant_site"] == budget_plant_site
+            ]
+        else:
+            selected_actual_df = budget_actual_df
 
-        location_budget_total = float(
-            location_budget_df["budget_amount"].sum()
+        selected_budget_total = float(
+            selected_budget_df["budget_amount"].sum()
         )
-        location_actual_total = float(
-            location_actual_df["training_cost"].sum()
+        selected_actual_total = float(
+            selected_actual_df["training_cost"].sum()
         )
-        location_variance = (
-            location_budget_total - location_actual_total
-        )
-        location_utilization = (
-            (location_actual_total / location_budget_total) * 100
-            if location_budget_total > 0
+        selected_variance = selected_budget_total - selected_actual_total
+        selected_utilization = (
+            (selected_actual_total / selected_budget_total) * 100
+            if selected_budget_total > 0
             else 0
         )
 
-        b1.metric(
-            "Budget",
-            f"Rs. {location_budget_total:,.0f}",
-        )
-        b2.metric(
-            "Actual",
-            f"Rs. {location_actual_total:,.0f}",
-        )
-        b3.metric(
-            "Variance",
-            f"Rs. {location_variance:,.0f}",
-        )
-        b4.metric(
-            "Utilization",
-            f"{location_utilization:,.1f}%",
-        )
+        b1.metric("Budget", f"Rs. {selected_budget_total:,.0f}")
+        b2.metric("Actual", f"Rs. {selected_actual_total:,.0f}")
+        b3.metric("Variance", f"Rs. {selected_variance:,.0f}")
+        b4.metric("Utilization", f"{selected_utilization:,.1f}%")
 
-        location_categories = pd.DataFrame(
+        # Category-level values for the selected Plant Site.
+        plant_category_df = pd.DataFrame(
             {
                 "Category": TRAINING_CATEGORIES,
                 "Budget": [
                     float(
-                        location_budget_df.loc[
-                            location_budget_df["category"] == cat,
+                        selected_budget_df.loc[
+                            selected_budget_df["category"] == cat,
                             "budget_amount",
                         ].sum()
                     )
@@ -3161,26 +3167,57 @@ def render_dashboard():
                 ],
                 "Actual": [
                     float(
-                        location_actual_df.loc[
-                            location_actual_df["category"] == cat,
+                        selected_actual_df.loc[
+                            selected_actual_df["category"] == cat,
                             "training_cost",
                         ].sum()
                     )
                     for cat in TRAINING_CATEGORIES
                 ],
             }
-        ).set_index("Category")
-
-        st.bar_chart(
-            location_categories[
-                ["Budget", "Actual"]
-            ],
-            use_container_width=True,
+        )
+        plant_category_df["Variance"] = (
+            plant_category_df["Budget"] - plant_category_df["Actual"]
+        )
+        plant_category_df["Utilization %"] = plant_category_df.apply(
+            lambda r: (r["Actual"] / r["Budget"] * 100)
+            if r["Budget"] > 0
+            else 0,
+            axis=1,
         )
 
         st.subheader(
-            "2. Select Category — Budget vs Actual"
+            f"{budget_plant_site} — Budget vs Actual by Category"
         )
+
+        st.dataframe(
+            plant_category_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Budget": st.column_config.NumberColumn(
+                    "Budget (Rs.)", format="Rs. %d"
+                ),
+                "Actual": st.column_config.NumberColumn(
+                    "Actual (Rs.)", format="Rs. %d"
+                ),
+                "Variance": st.column_config.NumberColumn(
+                    "Variance (Rs.)", format="Rs. %d"
+                ),
+                "Utilization %": st.column_config.NumberColumn(
+                    "Utilization %", format="%.1f%%"
+                ),
+            },
+        )
+
+        chart_df = plant_category_df.set_index("Category")[["Budget", "Actual"]]
+        st.bar_chart(chart_df, use_container_width=True)
+
+        # --------------------------------------------------------
+        # Category selector: show how every Plant Site performs
+        # for the selected category.
+        # --------------------------------------------------------
+        st.subheader("2. Select Category — Plant Site Budget vs Actual")
 
         c1, c2, c3, c4 = st.columns(4)
 
@@ -3193,108 +3230,80 @@ def render_dashboard():
         category_budget_df = budget_df[
             budget_df["budget_year"] == int(b_year)
         ].copy()
-
-        category_actual_df = df.copy()
-        category_actual_df = category_actual_df[
-            category_actual_df["from_date"].dt.year
-            == int(b_year)
-        ]
+        category_actual_df = budget_actual_df.copy()
 
         if budget_category != "All Categories":
             category_budget_df = category_budget_df[
-                category_budget_df["category"]
-                == budget_category
+                category_budget_df["category"] == budget_category
             ]
             category_actual_df = category_actual_df[
-                category_actual_df["category"]
-                == budget_category
+                category_actual_df["category"] == budget_category
             ]
 
-        category_budget_total = float(
-            category_budget_df["budget_amount"].sum()
-        )
-        category_actual_total = float(
-            category_actual_df["training_cost"].sum()
-        )
-        category_variance = (
-            category_budget_total - category_actual_total
-        )
+        category_budget_total = float(category_budget_df["budget_amount"].sum())
+        category_actual_total = float(category_actual_df["training_cost"].sum())
+        category_variance = category_budget_total - category_actual_total
         category_utilization = (
             (category_actual_total / category_budget_total) * 100
             if category_budget_total > 0
             else 0
         )
 
-        c1.metric(
-            "Budget",
-            f"Rs. {category_budget_total:,.0f}",
-        )
-        c2.metric(
-            "Actual",
-            f"Rs. {category_actual_total:,.0f}",
-        )
-        c3.metric(
-            "Variance",
-            f"Rs. {category_variance:,.0f}",
-        )
-        c4.metric(
-            "Utilization",
-            f"{category_utilization:,.1f}%",
-        )
+        c1.metric("Budget", f"Rs. {category_budget_total:,.0f}")
+        c2.metric("Actual", f"Rs. {category_actual_total:,.0f}")
+        c3.metric("Variance", f"Rs. {category_variance:,.0f}")
+        c4.metric("Utilization", f"{category_utilization:,.1f}%")
 
-        category_locations = (
-            sorted(
-                set(
-                    KNOWN_LOCATIONS
-                    + category_budget_df["location"]
-                    .dropna()
-                    .astype(str)
-                    .str.strip()
-                    .tolist()
-                    + category_actual_df["location"]
-                    .dropna()
-                    .astype(str)
-                    .str.strip()
-                    .tolist()
-                ),
-                key=str.upper,
-            )
-        )
+        category_plant_sites = BUDGET_LOCATIONS.copy()
 
-        category_location_df = pd.DataFrame(
+        category_plant_site_df = pd.DataFrame(
             {
-                "Location": category_locations,
+                "Plant Site": category_plant_sites,
                 "Budget": [
                     float(
                         category_budget_df.loc[
-                            category_budget_df["location"]
-                            .astype(str)
-                            .str.strip()
-                            == loc,
+                            category_budget_df["location"].astype(str).str.strip() == site,
                             "budget_amount",
                         ].sum()
                     )
-                    for loc in category_locations
+                    for site in category_plant_sites
                 ],
                 "Actual": [
                     float(
                         category_actual_df.loc[
-                            category_actual_df["location"]
-                            .astype(str)
-                            .str.strip()
-                            == loc,
+                            category_actual_df["plant_site"] == site,
                             "training_cost",
                         ].sum()
                     )
-                    for loc in category_locations
+                    for site in category_plant_sites
                 ],
             }
-        ).set_index("Location")
+        )
+
+        category_plant_site_df["Variance"] = (
+            category_plant_site_df["Budget"]
+            - category_plant_site_df["Actual"]
+        )
+
+        st.dataframe(
+            category_plant_site_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Budget": st.column_config.NumberColumn(
+                    "Budget (Rs.)", format="Rs. %d"
+                ),
+                "Actual": st.column_config.NumberColumn(
+                    "Actual (Rs.)", format="Rs. %d"
+                ),
+                "Variance": st.column_config.NumberColumn(
+                    "Variance (Rs.)", format="Rs. %d"
+                ),
+            },
+        )
 
         st.bar_chart(
-            category_location_df[
-                ["Budget", "Actual"]
-            ],
+            category_plant_site_df.set_index("Plant Site")[["Budget", "Actual"]],
             use_container_width=True,
         )
 
@@ -3305,9 +3314,7 @@ def render_dashboard():
                     float(
                         budget_df.loc[
                             (budget_df["budget_year"] == int(b_year))
-                            & (
-                                budget_df["category"] == cat
-                            ),
+                            & (budget_df["category"] == cat),
                             "budget_amount",
                         ].sum()
                     )
@@ -3315,9 +3322,8 @@ def render_dashboard():
                 ],
                 "Actual": [
                     float(
-                        df.loc[
-                            (df["from_date"].dt.year == int(b_year))
-                            & (df["category"] == cat),
+                        budget_actual_df.loc[
+                            budget_actual_df["category"] == cat,
                             "training_cost",
                         ].sum()
                     )
@@ -3327,8 +3333,7 @@ def render_dashboard():
         )
 
         budget_summary["Variance"] = (
-            budget_summary["Budget"]
-            - budget_summary["Actual"]
+            budget_summary["Budget"] - budget_summary["Actual"]
         )
 
         budget_summary["Utilization %"] = budget_summary.apply(
@@ -3389,7 +3394,7 @@ def render_dashboard():
             "Type",
             "Category",
             "Trainer",
-            "Location",
+            "Plant Site",
             "Hours / Worker",
             "Workers",
             "Total Training Hours",
@@ -4139,7 +4144,7 @@ def render_budget_entry():
 
     st.title("Training Budget Entry")
     st.caption(
-        "Enter and manage separate annual budgets for each location and training category. "
+        "Enter and manage separate annual budgets for each plant site and training category. "
         "This section is available to all logged-in users."
     )
 
@@ -4155,7 +4160,7 @@ def render_budget_entry():
                 Budget Structure
             </div>
             <div class="formula-text">
-                Budget = Year + Location + Category + Budget Amount
+                Budget = Year + Plant Site + Category + Budget Amount
             </div>
             <div class="small-note">
                 Categories:
@@ -4174,7 +4179,7 @@ def render_budget_entry():
         st.subheader("📥 Import Budget Excel")
         st.caption(
             "Upload the prepared budget workbook. Website plant/site names "
-            "are used as the master names. Existing Year + Location + Category "
+            "are used as the master names. Existing Year + Plant Site + Category "
             "records are updated instead of duplicated."
         )
 
@@ -4427,7 +4432,7 @@ def render_budget_entry():
 
     st.divider()
 
-    # Budget Entry supports all configured company locations.
+    # Budget Entry supports all configured company plant sites.
     # BUDGET_LOCATIONS is based on KNOWN_LOCATIONS and therefore includes
     # HOF, BBO, BTO, BKN, EME, MGT, GNT, HS1, HS2, LKM, MVB, ORK,
     # RDP, UDW, VBL and WMB.
@@ -4451,7 +4456,7 @@ def render_budget_entry():
             )
 
             budget_location = st.selectbox(
-                "Location *",
+                "Plant Site *",
                 locations,
                 key="budget_location_entry",
             )
@@ -4478,7 +4483,7 @@ def render_budget_entry():
         ):
             if not budget_location.strip():
                 st.error(
-                    "Please select a location."
+                    "Please select a plant site."
                 )
             elif budget_amount < 0:
                 st.error(
@@ -4539,7 +4544,7 @@ def render_budget_entry():
     budget_display.columns = [
         "ID",
         "Year",
-        "Location",
+        "Plant Site",
         "Category",
         "Budget Amount (Rs.)",
     ]
@@ -4600,7 +4605,7 @@ def render_budget_entry():
                 key=f"edit_budget_year_{selected_budget_id}",
             )
 
-            # Budget editing supports all configured company locations.
+            # Budget editing supports all configured company plant sites.
             edit_locations = BUDGET_LOCATIONS.copy()
 
             current_location = str(
@@ -4608,7 +4613,7 @@ def render_budget_entry():
             ).strip()
 
             edit_location = st.selectbox(
-                "Location",
+                "Plant Site",
                 edit_locations,
                 index=(
                     edit_locations.index(

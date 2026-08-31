@@ -3309,6 +3309,108 @@ def render_records():
     )
 
     filtered = df.copy()
+    # ------------------------------------------------------------
+    # EXCEL-STYLE COLUMN FILTERS
+    # ------------------------------------------------------------
+    # Added only to the Training Records page. The existing search,
+    # table, download and edit/delete functionality below is unchanged.
+    with st.expander("🔎 Filter each column", expanded=False):
+        def _filter_options(column, formatter=None):
+            values = df[column].dropna()
+            if formatter is not None:
+                values = values.map(formatter)
+            values = values.astype(str).str.strip()
+            values = values[values != ""].drop_duplicates().sort_values()
+            return ["All"] + values.tolist()
+
+        f1, f2, f3 = st.columns(3)
+
+        with f1:
+            programme_filter = st.selectbox(
+                "Programme",
+                _filter_options("programme_name"),
+                key="records_filter_programme",
+            )
+
+        with f2:
+            from_date_filter = st.selectbox(
+                "From Date",
+                _filter_options(
+                    "from_date",
+                    lambda x: pd.to_datetime(x).strftime("%Y-%m-%d"),
+                ),
+                key="records_filter_from_date",
+            )
+
+        with f3:
+            to_date_filter = st.selectbox(
+                "To Date",
+                _filter_options(
+                    "to_date",
+                    lambda x: pd.to_datetime(x).strftime("%Y-%m-%d"),
+                ),
+                key="records_filter_to_date",
+            )
+
+        f4, f5, f6 = st.columns(3)
+
+        with f4:
+            quarter_filter = st.selectbox(
+                "Quarter",
+                _filter_options("quarter"),
+                key="records_filter_quarter",
+            )
+
+        with f5:
+            type_filter = st.selectbox(
+                "Type",
+                _filter_options("training_type"),
+                key="records_filter_type",
+            )
+
+        with f6:
+            plant_filter = st.selectbox(
+                "Plant Site",
+                _filter_options("power_plant"),
+                key="records_filter_plant",
+            )
+
+    # Apply selected column filters.
+    if programme_filter != "All":
+        filtered = filtered[
+            filtered["programme_name"].fillna("").astype(str).str.strip()
+            == programme_filter
+        ]
+
+    if from_date_filter != "All":
+        filtered = filtered[
+            pd.to_datetime(filtered["from_date"]).dt.strftime("%Y-%m-%d")
+            == from_date_filter
+        ]
+
+    if to_date_filter != "All":
+        filtered = filtered[
+            pd.to_datetime(filtered["to_date"]).dt.strftime("%Y-%m-%d")
+            == to_date_filter
+        ]
+
+    if quarter_filter != "All":
+        filtered = filtered[
+            filtered["quarter"].fillna("").astype(str).str.strip()
+            == quarter_filter
+        ]
+
+    if type_filter != "All":
+        filtered = filtered[
+            filtered["training_type"].fillna("").astype(str).str.strip()
+            == type_filter
+        ]
+
+    if plant_filter != "All":
+        filtered = filtered[
+            filtered["power_plant"].fillna("").astype(str).str.strip()
+            == plant_filter
+        ]
 
     if search.strip():
         q = search.strip().lower()

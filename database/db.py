@@ -51,8 +51,8 @@ ON training_records(from_date);
 CREATE INDEX IF NOT EXISTS idx_training_type
 ON training_records(training_type);
 
-CREATE INDEX IF NOT EXISTS idx_training_location
-ON training_records(location);
+CREATE INDEX IF NOT EXISTS idx_training_power_plant
+ON training_records(power_plant);
 """
 
 

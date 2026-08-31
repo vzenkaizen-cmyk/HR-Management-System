@@ -451,7 +451,6 @@ def ensure_training_schema():
         quarter VARCHAR(10),
         training_type VARCHAR(100),
         category VARCHAR(100),
-        location VARCHAR(255),
         power_plant VARCHAR(255),
         trainer_name TEXT,
         participant_names TEXT,
@@ -571,22 +570,6 @@ def ensure_training_schema():
         ) THEN
             ALTER TABLE public.training_records
                 ADD COLUMN category VARCHAR(100) DEFAULT 'Internal (Cooperate Trainings)';
-        END IF;
-
-        IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema='public' AND table_name='training_records'
-              AND column_name='location'
-        ) THEN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public' AND table_name='training_records'
-                  AND column_name='loc'
-            ) THEN
-                ALTER TABLE public.training_records RENAME COLUMN loc TO location;
-            ELSE
-                ALTER TABLE public.training_records ADD COLUMN location VARCHAR(255);
-            END IF;
         END IF;
 
         IF NOT EXISTS (
@@ -737,17 +720,24 @@ def ensure_training_schema():
             );
         END IF;
 
-        UPDATE public.training_records
-        SET power_plant = NULLIF(TRIM(location), '')
-        WHERE (power_plant IS NULL OR TRIM(power_plant) = '')
-          AND location IS NOT NULL
-          AND TRIM(location) <> '';
+        -- Use Power Plant as the single plant/site field.
+        -- Preserve existing location values before removing the duplicate column.
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='location'
+        ) THEN
+            UPDATE public.training_records
+            SET power_plant = COALESCE(
+                NULLIF(TRIM(power_plant), ''),
+                NULLIF(TRIM(location), '')
+            )
+            WHERE (power_plant IS NULL OR TRIM(power_plant) = '')
+              AND location IS NOT NULL
+              AND TRIM(location) <> '';
 
-        UPDATE public.training_records
-        SET location = NULLIF(TRIM(power_plant), '')
-        WHERE (location IS NULL OR TRIM(location) = '')
-          AND power_plant IS NOT NULL
-          AND TRIM(power_plant) <> '';
+            ALTER TABLE public.training_records DROP COLUMN IF EXISTS location;
+        END IF;
 
         -- Do not invent trainer names. Use a clear value for historical
         -- records where the source data contains no trainer name.
@@ -909,8 +899,8 @@ def ensure_training_schema():
     CREATE INDEX IF NOT EXISTS idx_training_records_date
         ON public.training_records(from_date);
 
-    CREATE INDEX IF NOT EXISTS idx_training_records_location
-        ON public.training_records(location);
+    CREATE INDEX IF NOT EXISTS idx_training_records_power_plant
+        ON public.training_records(power_plant);
 
     CREATE INDEX IF NOT EXISTS idx_training_records_category
         ON public.training_records(category);
@@ -1085,7 +1075,6 @@ SELECT
     quarter,
     training_type,
     category,
-    location,
     power_plant,
     trainer_name,
     participant_names,
@@ -1111,7 +1100,6 @@ def get_training_records():
         ("power_plant", "Not Specified"),
         ("trainer_name", "Not Specified"),
         ("category", "Internal (Cooperate Trainings)"),
-        ("location", "Not Specified"),
     ]:
         if col not in df.columns:
             df[col] = default
@@ -1135,21 +1123,8 @@ def get_training_records():
 
 
 def get_locations():
-    rows = run_query(
-        """
-        SELECT DISTINCT TRIM(location) AS location
-        FROM training_records
-        WHERE location IS NOT NULL AND TRIM(location) <> ''
-        ORDER BY TRIM(location)
-        """
-    )
-    db_locations = [
-        str(dict(r).get("location")).strip()
-        for r in rows
-        if dict(r).get("location")
-    ]
-    return sorted(set(KNOWN_LOCATIONS + db_locations), key=str.upper)
-
+    # Location is no longer stored separately for training records.
+    return get_power_plants()
 
 def get_power_plants():
     rows = run_query(
@@ -1171,7 +1146,7 @@ def get_power_plants():
 def get_existing_keys():
     rows = run_query(
         """
-        SELECT programme_name, from_date, location, COALESCE(power_plant,'') AS power_plant
+        SELECT programme_name, from_date, COALESCE(power_plant,'') AS power_plant
         FROM training_records
         """
     )
@@ -1180,11 +1155,10 @@ def get_existing_keys():
     for r in rows:
         record = dict(r)
         programme = str(record.get("programme_name") or "").strip().lower()
-        location = str(record.get("location") or "").strip().lower()
         power_plant = str(record.get("power_plant") or "").strip().lower()
         dt = pd.to_datetime(record.get("from_date"), errors="coerce")
         date_key = dt.date() if not pd.isna(dt) else None
-        keys.add((programme, date_key, location, power_plant))
+        keys.add((programme, date_key, power_plant))
 
     return keys
 
@@ -1196,7 +1170,6 @@ def insert_training_record(
     quarter,
     training_type,
     category,
-    location,
     power_plant,
     trainer_name,
     participant_names,
@@ -1213,7 +1186,6 @@ def insert_training_record(
         "quarter": quarter,
         "training_type": training_type,
         "category": category,
-        "location": location,
         "power_plant": power_plant,
         "trainer_name": trainer_name,
         "participant_names": participant_names,
@@ -1229,14 +1201,14 @@ def insert_training_record(
                 """
                 INSERT INTO training_records (
                     programme_name, from_date, to_date, quarter,
-                    training_type, category, location, power_plant,
+                    training_type, category, power_plant,
                     trainer_name, participant_names,
                     training_cost, training_hours, participants_count,
                     total_hours, created_by
                 )
                 VALUES (
                     :programme_name, :from_date, :to_date, :quarter,
-                    :training_type, :category, :location, :power_plant,
+                    :training_type, :category, :power_plant,
                     :trainer_name, :participant_names,
                     :training_cost, :training_hours, :participants_count,
                     :total_hours, :created_by
@@ -1252,13 +1224,13 @@ def insert_training_record(
         """
         INSERT INTO training_records (
             programme_name, from_date, to_date, quarter,
-            training_type, category, location, power_plant,
+            training_type, category, power_plant,
             trainer_name, participant_names,
             training_cost, training_hours, participants_count, total_hours
         )
         VALUES (
             :programme_name, :from_date, :to_date, :quarter,
-            :training_type, :category, :location, :power_plant,
+            :training_type, :category, :power_plant,
             :trainer_name, :participant_names,
             :training_cost, :training_hours, :participants_count, :total_hours
         )
@@ -1275,7 +1247,6 @@ def update_training_record(
     quarter,
     training_type,
     category,
-    location,
     power_plant,
     trainer_name,
     participant_names,
@@ -1295,7 +1266,6 @@ def update_training_record(
             quarter = :quarter,
             training_type = :training_type,
             category = :category,
-            location = :location,
             power_plant = :power_plant,
             trainer_name = :trainer_name,
             participant_names = :participant_names,
@@ -1313,7 +1283,6 @@ def update_training_record(
             "quarter": quarter,
             "training_type": training_type,
             "category": category,
-            "location": location,
             "power_plant": power_plant,
             "trainer_name": trainer_name,
             "participant_names": participant_names,
@@ -1576,11 +1545,20 @@ def prepare_excel_dataframe(uploaded_file):
 
     for required in [
         "programme_name", "from_date", "training_type",
-        "location", "training_cost", "training_hours",
+        "power_plant", "training_cost", "training_hours",
         "participants_count"
     ]:
         if required not in df.columns:
             df[required] = None
+
+    # Power Plant is now the single plant/site field. If an older
+    # Excel file only has Location, use it as the Power Plant value.
+    if "power_plant" in df.columns:
+        if "location" in df.columns:
+            df["power_plant"] = df["power_plant"].fillna(df["location"])
+            blank_power = df["power_plant"].astype(str).str.strip().eq("")
+            df.loc[blank_power, "power_plant"] = df.loc[blank_power, "location"]
+        df["power_plant"] = df["power_plant"].fillna("Not Specified")
 
     optional_defaults = {
         "to_date": None,
@@ -1827,10 +1805,6 @@ def transform_import_rows(df):
             if not power_plant:
                 power_plant = "Not Specified"
 
-            location = str(source.get("location") or "").strip()
-            if not location:
-                location = power_plant
-
             trainer_name = str(source.get("trainer_name") or "").strip()
 
             training_hours = parse_number(
@@ -1888,7 +1862,6 @@ def transform_import_rows(df):
                     ),
                     "trainer_name": trainer_name,
                     "participant_names": participant_text,
-                    "location": location,
                     "power_plant": power_plant,
                     "training_cost": cost,
                     "training_hours": training_hours,
@@ -2402,8 +2375,6 @@ def render_data_entry():
         trainer_name = trainer_name.strip()
         power_plant = power_plant.strip()
 
-        location = power_plant
-
         if not programme:
             st.error("Please enter the programme name.")
             return
@@ -2442,7 +2413,6 @@ def render_data_entry():
                 quarter=quarter,
                 training_type=training_type,
                 category=category,
-                location=location,
                 power_plant=power_plant,
                 trainer_name=trainer_name,
                 participant_names=participant_names.strip(),
@@ -2637,7 +2607,7 @@ def render_import_excel():
                     "training_type",
                     "category",
                     "trainer_name",
-                    "location",
+                    "power_plant",
                     "training_cost",
                     "training_hours",
                     "participants_count",
@@ -2653,7 +2623,7 @@ def render_import_excel():
         st.subheader("Import into Training Records")
         st.caption(
             "Existing records with the same Programme + From Date "
-            "+ Location + Power Plant are skipped to prevent "
+            "+ Power Plant are skipped to prevent "
             "duplicate imports."
         )
 
@@ -2673,9 +2643,6 @@ def render_import_excel():
                     .strip()
                     .lower(),
                     row["from_date"],
-                    str(row["location"])
-                    .strip()
-                    .lower(),
                     str(row["power_plant"])
                     .strip()
                     .lower(),
@@ -2693,7 +2660,6 @@ def render_import_excel():
                         quarter=row["quarter"],
                         training_type=row["training_type"],
                         category=row["category"],
-                        location=row["location"],
                         power_plant=row["power_plant"],
                         trainer_name=row["trainer_name"],
                         participant_names=row["participant_names"],
@@ -2809,8 +2775,8 @@ def render_dashboard():
 
         locations = ["All Plant Sites"] + sorted(
             set(
-                KNOWN_LOCATIONS
-                + df["location"]
+                KNOWN_POWER_PLANTS
+                + df["power_plant"]
                 .dropna()
                 .astype(str)
                 .str.strip()
@@ -2903,7 +2869,7 @@ def render_dashboard():
 
     if selected_location != "All Plant Sites":
         filtered = filtered[
-            filtered["location"].astype(str).str.strip()
+            filtered["power_plant"].astype(str).str.strip()
             == selected_location
         ]
 
@@ -3081,29 +3047,15 @@ def render_dashboard():
             .isin(BUDGET_LOCATIONS)
         ].copy()
 
-        # Build a single Plant Site field for actual training data.
-        location_series = (
-            df["location"].fillna("").astype(str).str.strip()
-            if "location" in df.columns
-            else pd.Series("", index=df.index)
-        )
+        # Power Plant is the single Plant Site field for actual training data.
         power_plant_series = (
             df["power_plant"].fillna("").astype(str).str.strip()
             if "power_plant" in df.columns
             else pd.Series("", index=df.index)
         )
 
-        actual_plant_site = location_series.copy()
-        fallback_mask = (
-            ~actual_plant_site.isin(BUDGET_LOCATIONS)
-            & power_plant_series.isin(BUDGET_LOCATIONS)
-        )
-        actual_plant_site.loc[fallback_mask] = power_plant_series.loc[
-            fallback_mask
-        ]
-
         budget_actual_df = df.copy()
-        budget_actual_df["plant_site"] = actual_plant_site
+        budget_actual_df["plant_site"] = power_plant_series
 
         # Budget is annual, so it follows the top Year filter only.
         # When All Years is selected, use the latest available budget year.
@@ -3306,7 +3258,7 @@ def render_dashboard():
                     "training_type",
                     "category",
                     "trainer_name",
-                    "location",
+                    "power_plant",
                     "training_hours",
                     "participants_count",
                     "Total Training Hours",
@@ -3352,7 +3304,7 @@ def render_records():
         return
 
     search = st.text_input(
-        "Search programme, trainer, location, category or type",
+        "Search programme, trainer, plant site, category or type",
         placeholder="Search...",
     )
 
@@ -3370,11 +3322,10 @@ def render_records():
             .astype(str)
             .str.lower()
             .str.contains(q, na=False)
-            | filtered["location"]
+            | filtered["power_plant"]
             .astype(str)
             .str.lower()
             .str.contains(q, na=False)
-            | filtered["power_plant"]
             .astype(str)
             .str.lower()
             .str.contains(q, na=False)
@@ -3416,7 +3367,7 @@ def render_records():
             "training_type",
             "category",
             "trainer_name",
-            "location",
+            "power_plant",
             "training_hours",
             "participants_count",
             "calculated_total_hours",
@@ -3433,7 +3384,7 @@ def render_records():
         "Type",
         "Category",
         "Trainer",
-        "Location",
+        "Plant Site",
         "Hours / Worker",
         "Workers",
         "Total Training Hours",
@@ -3709,7 +3660,6 @@ def render_records():
                             quarter,
                             training_type,
                             category,
-                            power_plant.strip(),
                             power_plant.strip(),
                             trainer_name.strip(),
                             names.strip(),

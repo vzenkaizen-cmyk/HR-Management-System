@@ -872,22 +872,25 @@ except Exception as e:
 # ADMIN
 # ============================================================
 
-ADMIN_USERNAME = "samodad"
-ADMIN_DISPLAY_NAME = "Samoda De Silva"
+ADMIN_USERS = {
+    "samodad": "Samoda De Silva",
+    "roshan": "Roshan",
+}
 
 def ensure_admin_account():
     try:
         run_write(
             "ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'"
         )
-        run_write(
-            """
-            UPDATE public.users
-            SET role = 'admin'
-            WHERE LOWER(TRIM(username)) = LOWER(TRIM(:username))
-            """,
-            {"username": ADMIN_USERNAME},
-        )
+        for admin_username in ADMIN_USERS:
+            run_write(
+                """
+                UPDATE public.users
+                SET role = 'admin'
+                WHERE LOWER(TRIM(username)) = LOWER(TRIM(:username))
+                """,
+                {"username": admin_username},
+            )
     except Exception:
         pass
 
@@ -942,9 +945,9 @@ def get_user():
         pass
 
     username = str(user.get("username", "")).strip().lower()
-    if username == ADMIN_USERNAME.lower():
+    if username in ADMIN_USERS:
         user["role"] = "admin"
-        user.setdefault("full_name", ADMIN_DISPLAY_NAME)
+        user.setdefault("full_name", ADMIN_USERS[username])
 
     st.session_state["hr_user"] = user
     return user
@@ -956,9 +959,10 @@ def set_logged_user(user):
     except Exception:
         pass
 
-    if str(user.get("username", "")).strip().lower() == ADMIN_USERNAME.lower():
+    username = str(user.get("username", "")).strip().lower()
+    if username in ADMIN_USERS:
         user["role"] = "admin"
-        user.setdefault("full_name", ADMIN_DISPLAY_NAME)
+        user.setdefault("full_name", ADMIN_USERS[username])
 
     st.session_state["hr_user"] = user
     st.session_state["hr_page"] = "Home"
@@ -2221,7 +2225,7 @@ def render_data_entry():
 
             trainer_name = st.text_input(
                 "Trainer's Name *",
-                placeholder="e.g. Roshan Siriwardana",
+                placeholder="e.g. ABC Perera",
             )
 
             from_date = st.date_input(
@@ -2691,9 +2695,7 @@ def render_dashboard():
         "Training performance, budget and actual expenditure."
     )
 
-    summary = st.session_state.pop(
-        "last_import_summary", None
-    )
+    summary = st.session_state.pop("last_import_summary", None)
 
     if summary:
         st.markdown(
@@ -2720,11 +2722,12 @@ def render_dashboard():
         return
 
     # ------------------------------------------------------------
-    # MAIN FILTERS
+    # ALL DASHBOARD FILTERS
     # ------------------------------------------------------------
+    # All filters are kept together at the top of the Dashboard.
+    # The selected Plant Site / Year / Category also drive the
+    # Budget vs Actual section below.
     with st.container(border=True, key="dashboard_filters"):
-        # Use two rows instead of squeezing six filters into one row.
-        # This is the reliable fix for Streamlit/BaseWeb clipping.
         r1 = st.columns([1.35, 1.35, 1.35], gap="small")
         r2 = st.columns([2.05, 1.85, 1.35], gap="small")
         f1, f2, f3 = r1
@@ -2785,23 +2788,15 @@ def render_dashboard():
             key="dash_quarter",
         )
 
-        # Always show all configured training types, including
-        # Japanese Management Systems even if no record exists yet.
-        types_in_data = TRAINING_TYPES.copy()
-
         selected_type = f4.selectbox(
             "Training Type",
-            ["All Types"] + types_in_data,
+            ["All Types"] + TRAINING_TYPES.copy(),
             key="dash_type",
         )
 
-        # Always show all four required categories, even when
-        # a category has no training records yet.
-        categories_in_data = TRAINING_CATEGORIES.copy()
-
         selected_category = f5.selectbox(
             "Category",
-            ["All Categories"] + categories_in_data,
+            ["All Categories"] + TRAINING_CATEGORIES.copy(),
             key="dash_category",
         )
 
@@ -2827,6 +2822,9 @@ def render_dashboard():
             key="dash_month",
         )
 
+    # ------------------------------------------------------------
+    # APPLY TOP FILTERS
+    # ------------------------------------------------------------
     filtered = df.copy()
 
     if selected_location != "All Plant Sites":
@@ -2837,8 +2835,7 @@ def render_dashboard():
 
     if selected_year != "All Years":
         filtered = filtered[
-            filtered["from_date"].dt.year
-            == int(selected_year)
+            filtered["from_date"].dt.year == int(selected_year)
         ]
 
     if selected_quarter != "All Quarters":
@@ -2859,14 +2856,11 @@ def render_dashboard():
     month_number = month_options[selected_month]
     if month_number is not None:
         filtered = filtered[
-            filtered["from_date"].dt.month
-            == int(month_number)
+            filtered["from_date"].dt.month == int(month_number)
         ]
 
     if filtered.empty:
-        st.warning(
-            "No records match the selected filters."
-        )
+        st.warning("No records match the selected filters.")
     else:
         total_hours = float(
             filtered["calculated_total_hours"].sum()
@@ -2880,58 +2874,31 @@ def render_dashboard():
         )
 
         avg_hours_per_programme = (
-            total_hours / programmes
-            if programmes
-            else 0
+            total_hours / programmes if programmes else 0
         )
-
         avg_hours_per_worker = (
-            total_hours / workers
-            if workers
-            else 0
+            total_hours / workers if workers else 0
         )
 
         st.write("")
 
-        # Six metric cards were previously squeezed into one row, which
-        # caused Streamlit to truncate labels such as "Workers Attended"
-        # and "Avg. Hours / Programme" with "...".
-        # Use two rows of three equal-width cards so every label has
-        # enough real screen width and remains fully readable.
         k1, k2, k3 = st.columns(3, gap="medium")
-
-        k1.metric(
-            "Training Programmes",
-            f"{programmes:,}",
-        )
-        k2.metric(
-            "Workers Attended",
-            f"{workers:,.0f}",
-        )
-        k3.metric(
-            "Total Training Hours",
-            f"{total_hours:,.1f}",
-        )
+        k1.metric("Training Programmes", f"{programmes:,}")
+        k2.metric("Workers Attended", f"{workers:,.0f}")
+        k3.metric("Total Training Hours", f"{total_hours:,.1f}")
 
         st.write("")
 
         k4, k5, k6 = st.columns(3, gap="medium")
-
-        k4.metric(
-            "Avg. Hours / Programme",
-            f"{avg_hours_per_programme:,.1f}",
-        )
-        k5.metric(
-            "Training Cost",
-            f"Rs. {total_cost:,.0f}",
-        )
-        k6.metric(
-            "Hours / Worker",
-            f"{avg_hours_per_worker:,.1f}",
-        )
+        k4.metric("Avg. Hours / Programme", f"{avg_hours_per_programme:,.1f}")
+        k5.metric("Training Cost", f"Rs. {total_cost:,.0f}")
+        k6.metric("Hours / Worker", f"{avg_hours_per_worker:,.1f}")
 
         st.write("")
 
+        # These charts remain tied to the top filters, so changing any
+        # filter immediately rebuilds the chart data instead of leaving
+        # the graph on an old/frozen selection.
         c1, c2 = st.columns(2)
 
         with c1:
@@ -2960,15 +2927,10 @@ def render_dashboard():
                     ),
                     axis=1,
                 )
-
-                monthly_chart = monthly.set_index(
-                    "Month"
-                )[["calculated_total_hours"]]
-
-                monthly_chart.columns = [
-                    "Total Training Hours"
+                monthly_chart = monthly.set_index("Month")[
+                    ["calculated_total_hours"]
                 ]
-
+                monthly_chart.columns = ["Total Training Hours"]
                 st.line_chart(
                     monthly_chart,
                     use_container_width=True,
@@ -2976,7 +2938,6 @@ def render_dashboard():
 
         with c2:
             st.subheader("Training Hours by Type")
-
             by_type = (
                 filtered.groupby("training_type")[
                     "calculated_total_hours"
@@ -2985,7 +2946,6 @@ def render_dashboard():
                 .sort_values(ascending=False)
                 .to_frame("Training Hours")
             )
-
             st.bar_chart(
                 by_type,
                 use_container_width=True,
@@ -2995,17 +2955,12 @@ def render_dashboard():
 
         with c3:
             st.subheader("Programmes by Category")
-
             by_category = (
                 filtered.groupby("category")["id"]
                 .count()
-                .reindex(
-                    TRAINING_CATEGORIES,
-                    fill_value=0,
-                )
+                .reindex(TRAINING_CATEGORIES, fill_value=0)
                 .to_frame("Programmes")
             )
-
             st.bar_chart(
                 by_category,
                 use_container_width=True,
@@ -3013,19 +2968,12 @@ def render_dashboard():
 
         with c4:
             st.subheader("Training Cost by Category")
-
             by_cost_category = (
-                filtered.groupby("category")[
-                    "training_cost"
-                ]
+                filtered.groupby("category")["training_cost"]
                 .sum()
-                .reindex(
-                    TRAINING_CATEGORIES,
-                    fill_value=0,
-                )
+                .reindex(TRAINING_CATEGORIES, fill_value=0)
                 .to_frame("Actual Cost")
             )
-
             st.bar_chart(
                 by_cost_category,
                 use_container_width=True,
@@ -3034,13 +2982,14 @@ def render_dashboard():
     # ------------------------------------------------------------
     # BUDGET VS ACTUAL
     # ------------------------------------------------------------
+    # No separate/middle filters are used here. Plant Site, Year and
+    # Category are controlled only by the filters at the top.
     st.divider()
     st.header("Budget vs Actuals")
     st.caption(
-        "Actuals are calculated from Training Cost. "
-        "Budget values come from the Budget Entry section. "
-        "Select a Plant Site to compare that site's Budget vs Actual. "
-        "The database column remains named location for compatibility."
+        "Budget and Actual values use the Plant Site, Year and Category "
+        "selected at the top of the Dashboard. Actuals also follow the "
+        "Quarter, Training Type and Month filters above."
     )
 
     budget_df = get_budget_records()
@@ -3051,50 +3000,14 @@ def render_dashboard():
             "Use Budget Entry to add budgets by Plant Site and Category."
         )
     else:
-        budget_years = sorted(
-            budget_df["budget_year"].unique().tolist(),
-            reverse=True,
-        )
-
-        default_budget_year = (
-            int(selected_year)
-            if selected_year != "All Years"
-            and int(selected_year) in budget_years
-            else budget_years[0]
-        )
-
-        b_year = st.selectbox(
-            "Budget Year",
-            budget_years,
-            index=budget_years.index(default_budget_year),
-            key="budget_dash_year",
-        )
-
-        st.subheader("1. Select Plant Site — Budget vs Actual")
-
-        b1, b2, b3, b4 = st.columns(4)
-
-        # Budget records use the existing database field `location`,
-        # but the user-facing meaning is Plant Site.
         budget_df = budget_df[
-            budget_df["location"].astype(str).str.strip().isin(BUDGET_LOCATIONS)
+            budget_df["location"]
+            .astype(str)
+            .str.strip()
+            .isin(BUDGET_LOCATIONS)
         ].copy()
 
-        plant_sites = ["All Plant Sites"] + BUDGET_LOCATIONS
-
-        budget_plant_site = b1.selectbox(
-            "Select Plant Site",
-            plant_sites,
-            key="budget_dash_plant_site",
-        )
-
-        # --------------------------------------------------------
         # Build a single Plant Site field for actual training data.
-        # Existing records normally store the site in `location`.
-        # If that is blank/non-standard, fall back to `power_plant`.
-        # This keeps old records working while making Plant Site
-        # selection consistent with the budget sheet.
-        # --------------------------------------------------------
         location_series = (
             df["location"].fillna("").astype(str).str.strip()
             if "location" in df.columns
@@ -3111,48 +3024,97 @@ def render_dashboard():
             ~actual_plant_site.isin(BUDGET_LOCATIONS)
             & power_plant_series.isin(BUDGET_LOCATIONS)
         )
-        actual_plant_site.loc[fallback_mask] = power_plant_series.loc[fallback_mask]
+        actual_plant_site.loc[fallback_mask] = power_plant_series.loc[
+            fallback_mask
+        ]
 
         budget_actual_df = df.copy()
         budget_actual_df["plant_site"] = actual_plant_site
-        budget_actual_df = budget_actual_df[
-            budget_actual_df["from_date"].dt.year == int(b_year)
-        ].copy()
 
-        selected_budget_df = budget_df[
-            budget_df["budget_year"] == int(b_year)
-        ].copy()
+        # Budget is annual, so it follows the top Year filter only.
+        # When All Years is selected, use the latest available budget year.
+        budget_years = sorted(
+            budget_df["budget_year"].unique().tolist(),
+            reverse=True,
+        )
 
-        if budget_plant_site != "All Plant Sites":
+        if selected_year != "All Years" and int(selected_year) in budget_years:
+            b_year = int(selected_year)
+            selected_budget_df = budget_df[
+                budget_df["budget_year"] == int(b_year)
+            ].copy()
+            budget_period_label = str(b_year)
+        else:
+            # All Years at the top means all available budget years.
+            selected_budget_df = budget_df.copy()
+            budget_period_label = "All Years"
+
+        if selected_location != "All Plant Sites":
             selected_budget_df = selected_budget_df[
                 selected_budget_df["location"].astype(str).str.strip()
-                == budget_plant_site
+                == selected_location
             ]
-            selected_actual_df = budget_actual_df[
-                budget_actual_df["plant_site"] == budget_plant_site
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["plant_site"] == selected_location
+            ].copy()
+
+        # The top Year filter applies to Actuals as well.
+        if selected_year != "All Years":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["from_date"].dt.year == int(selected_year)
+            ].copy()
+
+        # The top Category filter drives both Budget and Actual.
+        if selected_category != "All Categories":
+            selected_budget_df = selected_budget_df[
+                selected_budget_df["category"] == selected_category
             ]
-        else:
-            selected_actual_df = budget_actual_df
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["category"] == selected_category
+            ].copy()
+
+        # The remaining top filters apply to Actuals.
+        if selected_quarter != "All Quarters":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["quarter"] == selected_quarter
+            ].copy()
+
+        if selected_type != "All Types":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["training_type"] == selected_type
+            ].copy()
+
+        if month_number is not None:
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["from_date"].dt.month == int(month_number)
+            ].copy()
 
         selected_budget_total = float(
             selected_budget_df["budget_amount"].sum()
         )
         selected_actual_total = float(
-            selected_actual_df["training_cost"].sum()
+            budget_actual_df["training_cost"].sum()
         )
-        selected_variance = selected_budget_total - selected_actual_total
+        selected_variance = (
+            selected_budget_total - selected_actual_total
+        )
         selected_utilization = (
             (selected_actual_total / selected_budget_total) * 100
             if selected_budget_total > 0
             else 0
         )
 
+        # Required Budget / Actual / Variance / Utilization cards.
+        st.subheader(
+            f"{selected_location} — Budget vs Actual ({budget_period_label})"
+        )
+        b1, b2, b3, b4 = st.columns(4, gap="medium")
         b1.metric("Budget", f"Rs. {selected_budget_total:,.0f}")
         b2.metric("Actual", f"Rs. {selected_actual_total:,.0f}")
         b3.metric("Variance", f"Rs. {selected_variance:,.0f}")
         b4.metric("Utilization", f"{selected_utilization:,.1f}%")
 
-        # Category-level values for the selected Plant Site.
+        # Budget vs Actual graph uses the same top selections.
         plant_category_df = pd.DataFrame(
             {
                 "Category": TRAINING_CATEGORIES,
@@ -3167,8 +3129,8 @@ def render_dashboard():
                 ],
                 "Actual": [
                     float(
-                        selected_actual_df.loc[
-                            selected_actual_df["category"] == cat,
+                        budget_actual_df.loc[
+                            budget_actual_df["category"] == cat,
                             "training_cost",
                         ].sum()
                     )
@@ -3176,20 +3138,58 @@ def render_dashboard():
                 ],
             }
         )
+
+        if selected_category != "All Categories":
+            plant_category_df = plant_category_df[
+                plant_category_df["Category"] == selected_category
+            ].copy()
+
         plant_category_df["Variance"] = (
             plant_category_df["Budget"] - plant_category_df["Actual"]
         )
         plant_category_df["Utilization %"] = plant_category_df.apply(
-            lambda r: (r["Actual"] / r["Budget"] * 100)
-            if r["Budget"] > 0
-            else 0,
+            lambda r: (
+                r["Actual"] / r["Budget"] * 100
+                if r["Budget"] > 0
+                else 0
+            ),
             axis=1,
         )
 
-        st.subheader(
-            f"{budget_plant_site} — Budget vs Actual by Category"
+        st.subheader("Budget vs Actual by Category")
+        chart_df = plant_category_df.set_index("Category")[
+            ["Budget", "Actual"]
+        ]
+        st.bar_chart(
+            chart_df,
+            use_container_width=True,
         )
 
+        # A second live graph makes variance/utilization visible without
+        # introducing another filter in the middle of the Dashboard.
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("Variance by Category")
+            variance_chart = plant_category_df.set_index("Category")[
+                ["Variance"]
+            ]
+            st.bar_chart(
+                variance_chart,
+                use_container_width=True,
+            )
+
+        with g2:
+            st.subheader("Utilization by Category")
+            utilization_chart = plant_category_df.set_index("Category")[
+                ["Utilization %"]
+            ]
+            st.bar_chart(
+                utilization_chart,
+                use_container_width=True,
+            )
+
+        # Keep the detailed category values available, but do not add
+        # another selector/table that competes with the top filters.
         st.dataframe(
             plant_category_df,
             use_container_width=True,
@@ -3210,210 +3210,56 @@ def render_dashboard():
             },
         )
 
-        chart_df = plant_category_df.set_index("Category")[["Budget", "Actual"]]
-        st.bar_chart(chart_df, use_container_width=True)
-
-        # --------------------------------------------------------
-        # Category selector: show how every Plant Site performs
-        # for the selected category.
-        # --------------------------------------------------------
-        st.subheader("2. Select Category — Plant Site Budget vs Actual")
-
-        c1, c2, c3, c4 = st.columns(4)
-
-        budget_category = c1.selectbox(
-            "Select Category",
-            ["All Categories"] + TRAINING_CATEGORIES,
-            key="budget_dash_category",
-        )
-
-        category_budget_df = budget_df[
-            budget_df["budget_year"] == int(b_year)
-        ].copy()
-        category_actual_df = budget_actual_df.copy()
-
-        if budget_category != "All Categories":
-            category_budget_df = category_budget_df[
-                category_budget_df["category"] == budget_category
+        # Download remains available without displaying the old
+        # Training Records table on the Dashboard.
+        if not filtered.empty:
+            display = filtered.copy()
+            display["from_date"] = display["from_date"].dt.strftime(
+                "%Y-%m-%d"
+            )
+            display["to_date"] = display["to_date"].dt.strftime(
+                "%Y-%m-%d"
+            )
+            display["Total Training Hours"] = display[
+                "calculated_total_hours"
             ]
-            category_actual_df = category_actual_df[
-                category_actual_df["category"] == budget_category
+            display = display[
+                [
+                    "programme_name",
+                    "from_date",
+                    "to_date",
+                    "quarter",
+                    "training_type",
+                    "category",
+                    "trainer_name",
+                    "location",
+                    "training_hours",
+                    "participants_count",
+                    "Total Training Hours",
+                    "training_cost",
+                ]
             ]
-
-        category_budget_total = float(category_budget_df["budget_amount"].sum())
-        category_actual_total = float(category_actual_df["training_cost"].sum())
-        category_variance = category_budget_total - category_actual_total
-        category_utilization = (
-            (category_actual_total / category_budget_total) * 100
-            if category_budget_total > 0
-            else 0
-        )
-
-        c1.metric("Budget", f"Rs. {category_budget_total:,.0f}")
-        c2.metric("Actual", f"Rs. {category_actual_total:,.0f}")
-        c3.metric("Variance", f"Rs. {category_variance:,.0f}")
-        c4.metric("Utilization", f"{category_utilization:,.1f}%")
-
-        category_plant_sites = BUDGET_LOCATIONS.copy()
-
-        category_plant_site_df = pd.DataFrame(
-            {
-                "Plant Site": category_plant_sites,
-                "Budget": [
-                    float(
-                        category_budget_df.loc[
-                            category_budget_df["location"].astype(str).str.strip() == site,
-                            "budget_amount",
-                        ].sum()
-                    )
-                    for site in category_plant_sites
-                ],
-                "Actual": [
-                    float(
-                        category_actual_df.loc[
-                            category_actual_df["plant_site"] == site,
-                            "training_cost",
-                        ].sum()
-                    )
-                    for site in category_plant_sites
-                ],
-            }
-        )
-
-        category_plant_site_df["Variance"] = (
-            category_plant_site_df["Budget"]
-            - category_plant_site_df["Actual"]
-        )
-
-        st.dataframe(
-            category_plant_site_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Budget": st.column_config.NumberColumn(
-                    "Budget (Rs.)", format="Rs. %d"
-                ),
-                "Actual": st.column_config.NumberColumn(
-                    "Actual (Rs.)", format="Rs. %d"
-                ),
-                "Variance": st.column_config.NumberColumn(
-                    "Variance (Rs.)", format="Rs. %d"
-                ),
-            },
-        )
-
-        st.bar_chart(
-            category_plant_site_df.set_index("Plant Site")[["Budget", "Actual"]],
-            use_container_width=True,
-        )
-
-        budget_summary = pd.DataFrame(
-            {
-                "Category": TRAINING_CATEGORIES,
-                "Budget": [
-                    float(
-                        budget_df.loc[
-                            (budget_df["budget_year"] == int(b_year))
-                            & (budget_df["category"] == cat),
-                            "budget_amount",
-                        ].sum()
-                    )
-                    for cat in TRAINING_CATEGORIES
-                ],
-                "Actual": [
-                    float(
-                        budget_actual_df.loc[
-                            budget_actual_df["category"] == cat,
-                            "training_cost",
-                        ].sum()
-                    )
-                    for cat in TRAINING_CATEGORIES
-                ],
-            }
-        )
-
-        budget_summary["Variance"] = (
-            budget_summary["Budget"] - budget_summary["Actual"]
-        )
-
-        budget_summary["Utilization %"] = budget_summary.apply(
-            lambda r: (
-                (r["Actual"] / r["Budget"]) * 100
-                if r["Budget"] > 0
-                else 0
-            ),
-            axis=1,
-        )
-
-        st.subheader("Budget vs Actual Summary")
-        st.dataframe(
-            budget_summary,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    # ------------------------------------------------------------
-    # TRAINING RECORDS
-    # ------------------------------------------------------------
-    if not filtered.empty:
-        st.subheader("Training Records")
-
-        display = filtered.copy()
-        display["from_date"] = (
-            display["from_date"].dt.strftime("%Y-%m-%d")
-        )
-        display["to_date"] = (
-            display["to_date"].dt.strftime("%Y-%m-%d")
-        )
-        display["Total Training Hours"] = (
-            display["calculated_total_hours"]
-        )
-
-        display = display[
-            [
-                "programme_name",
-                "from_date",
-                "to_date",
-                "quarter",
-                "training_type",
-                "category",
-                "trainer_name",
-                "location",
-                "training_hours",
-                "participants_count",
+            display.columns = [
+                "Programme",
+                "From Date",
+                "To Date",
+                "Quarter",
+                "Type",
+                "Category",
+                "Trainer",
+                "Plant Site",
+                "Hours / Worker",
+                "Workers",
                 "Total Training Hours",
-                "training_cost",
+                "Training Cost (Rs.)",
             ]
-        ]
-
-        display.columns = [
-            "Programme",
-            "From Date",
-            "To Date",
-            "Quarter",
-            "Type",
-            "Category",
-            "Trainer",
-            "Plant Site",
-            "Hours / Worker",
-            "Workers",
-            "Total Training Hours",
-            "Training Cost (Rs.)",
-        ]
-
-        st.dataframe(
-            display,
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        st.download_button(
-            "Download Dashboard Data (CSV)",
-            display.to_csv(index=False).encode("utf-8"),
-            "training_dashboard.csv",
-            "text/csv",
-            use_container_width=True,
-        )
+            st.download_button(
+                "Download Dashboard Data (CSV)",
+                display.to_csv(index=False).encode("utf-8"),
+                "training_dashboard.csv",
+                "text/csv",
+                use_container_width=True,
+            )
 
 
 # ============================================================

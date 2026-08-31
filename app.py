@@ -700,6 +700,69 @@ def ensure_training_schema():
         END IF;
 
         -- -------------------------
+        -- Legacy training-record cleanup
+        -- Preserve useful legacy values before removing old columns.
+        -- -------------------------
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='participants'
+        ) THEN
+            UPDATE public.training_records
+            SET participants_count = COALESCE(
+                NULLIF(participants_count, 0),
+                CASE
+                    WHEN TRIM(participants::text) ~ '^[0-9]+(\\.[0-9]+)?$'
+                    THEN participants::numeric
+                    ELSE NULL
+                END,
+                0
+            );
+        END IF;
+
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='training_records'
+              AND column_name='people_attended'
+        ) THEN
+            UPDATE public.training_records
+            SET participants_count = COALESCE(
+                NULLIF(participants_count, 0),
+                CASE
+                    WHEN TRIM(people_attended::text) ~ '^[0-9]+(\\.[0-9]+)?$'
+                    THEN people_attended::numeric
+                    ELSE NULL
+                END,
+                0
+            );
+        END IF;
+
+        UPDATE public.training_records
+        SET power_plant = NULLIF(TRIM(location), '')
+        WHERE (power_plant IS NULL OR TRIM(power_plant) = '')
+          AND location IS NOT NULL
+          AND TRIM(location) <> '';
+
+        UPDATE public.training_records
+        SET location = NULLIF(TRIM(power_plant), '')
+        WHERE (location IS NULL OR TRIM(location) = '')
+          AND power_plant IS NOT NULL
+          AND TRIM(power_plant) <> '';
+
+        -- Do not invent trainer names. Use a clear value for historical
+        -- records where the source data contains no trainer name.
+        UPDATE public.training_records
+        SET trainer_name = 'Not Specified'
+        WHERE trainer_name IS NULL OR TRIM(trainer_name) = '';
+
+        UPDATE public.training_records
+        SET total_hours =
+            COALESCE(training_hours, 0) * COALESCE(participants_count, 0)
+        WHERE total_hours IS NULL
+           OR total_hours <>
+              COALESCE(training_hours, 0) * COALESCE(participants_count, 0);
+
+        -- -------------------------
         -- Safe training type migration
         -- Drop old CHECK BEFORE changing values.
         -- -------------------------
@@ -856,6 +919,17 @@ def ensure_training_schema():
         ON public.training_budgets(budget_year, location, category);
     """
     run_write(migration_sql)
+
+    # Remove only the obsolete legacy columns after their useful numeric
+    # values have been copied into participants_count. Existing rows remain.
+    run_write(
+        """
+        ALTER TABLE public.training_records
+            DROP COLUMN IF EXISTS participants;
+        ALTER TABLE public.training_records
+            DROP COLUMN IF EXISTS people_attended;
+        """
+    )
 
 
 try:
@@ -1035,7 +1109,7 @@ def get_training_records():
 
     for col, default in [
         ("power_plant", "Not Specified"),
-        ("trainer_name", ""),
+        ("trainer_name", "Not Specified"),
         ("category", "Internal (Cooperate Trainings)"),
         ("location", "Not Specified"),
     ]:

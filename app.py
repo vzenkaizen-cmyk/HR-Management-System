@@ -304,6 +304,14 @@ section[data-testid="stSidebar"] label { color:#fff !important; }
     text-align:center !important;
     box-shadow:0 4px 14px rgba(0,0,0,.10) !important;
 }
+.sidebar-login-logo {
+    margin-bottom:10px !important;
+    padding:6px !important;
+}
+.sidebar-login-logo img {
+    width:100px !important;
+    max-width:100px !important;
+}
 .sidebar-logo-wrap img {
     display:block !important;
     max-width:100% !important;
@@ -2030,24 +2038,27 @@ def render_sidebar():
 # ============================================================
 
 def render_login():
-    _, logo_col, _ = st.columns([1, 1.4, 1])
-    with logo_col:
-        st.image(get_vtrain_logo(), use_container_width=True)
+    # Keep the login page compact: place the V-TRAIN logo and
+    # authentication controls in the left sidebar, matching
+    # the sidebar layout used after login.
+    with st.sidebar:
+        st.markdown(
+            '<div class="sidebar-logo-wrap sidebar-login-logo">',
+            unsafe_allow_html=True,
+        )
+        st.image(get_vtrain_logo(), width=100)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(
-        '<div class="app-title">HR Training Dashboard</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="app-subtitle">'
-        'Training management system — sign in to continue.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            '<div class="sidebar-brand-title">HR Training Dashboard</div>',
+            unsafe_allow_html=True,
+        )
 
-    _, center, _ = st.columns([1, 1.05, 1])
+        st.markdown(
+            '<div class="sidebar-section">ACCOUNT ACCESS</div>',
+            unsafe_allow_html=True,
+        )
 
-    with center:
         login_tab, signup_tab = st.tabs(
             ["🔐 Log in", "👤 Create account"]
         )

@@ -353,8 +353,8 @@ section[data-testid="stSidebar"] button[role="tab"] * {
 .login-staff-image {
     display:block !important;
     position:relative !important;
-    left:calc(-1 * (100vw - 100%)) !important;
-    width:100vw !important;
+    left:-85px !important;
+    width:calc(100% + 182px) !important;
     max-width:none !important;
     margin:80px 0 0 0 !important;
     padding:0 !important;

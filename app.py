@@ -328,6 +328,43 @@ section[data-testid="stSidebar"] label { color:#fff !important; }
 .sidebar-user-name { color:#fff !important; font-size:15px; font-weight:800; }
 .sidebar-user-role { color:#d8efff !important; font-size:12px; margin-top:4px; }
 .sidebar-section { color:#b9e4ff !important; font-size:11px; font-weight:800; letter-spacing:1.2px; margin:10px 0 7px; }
+/* Login tabs inside the sidebar */
+section[data-testid="stSidebar"] [data-baseweb="tab-list"] {
+    background:transparent !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="tab"],
+section[data-testid="stSidebar"] button[role="tab"] {
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+    font-weight:700 !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="tab"][aria-selected="true"],
+section[data-testid="stSidebar"] button[role="tab"][aria-selected="true"] {
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+}
+section[data-testid="stSidebar"] [data-baseweb="tab"] *,
+section[data-testid="stSidebar"] button[role="tab"] * {
+    color:#ffffff !important;
+    -webkit-text-fill-color:#ffffff !important;
+}
+
+/* Login-page staff image */
+.login-staff-image {
+    display:flex !important;
+    justify-content:center !important;
+    align-items:center !important;
+    width:100% !important;
+    margin:80px auto 0 auto !important;
+}
+.login-staff-image img {
+    max-width:850px !important;
+    width:100% !important;
+    height:auto !important;
+    border-radius:14px !important;
+    box-shadow:0 6px 22px rgba(0,0,0,.10) !important;
+}
+
 section[data-testid="stSidebar"] .stButton > button {
     background:rgba(255,255,255,.07) !important;
     color:#fff !important; -webkit-text-fill-color:#fff !important;
@@ -2189,6 +2226,13 @@ def render_login():
                             "Unable to create the account. "
                             "Please check the database connection."
                         )
+
+    # Staff welcome image on the main login page.
+    staff_image = Path("Staff.png")
+    if staff_image.exists():
+        st.markdown('<div class="login-staff-image">', unsafe_allow_html=True)
+        st.image(str(staff_image), width=850)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ============================================================

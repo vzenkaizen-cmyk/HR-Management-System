@@ -467,6 +467,111 @@ section[data-testid="stSidebar"] .stButton > button * {
     padding: 15px 18px;
     margin-bottom: 18px;
 }
+
+        /* ============================================================
+           LOGIN PAGE — SIDEBAR AUTH + FULL RIGHT-SIDE STAFF IMAGE
+           ============================================================ */
+
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(
+                180deg,#073556 0%,#0a4772 58%,#0b507e 100%
+            ) !important;
+        }
+
+        .login-sidebar-header {
+            text-align: center;
+            padding: 12px 4px 20px 4px;
+        }
+
+        .login-sidebar-icon {
+            font-size: 34px !important;
+            line-height: 1.1;
+            margin-bottom: 5px;
+        }
+
+        .login-sidebar-title {
+            color: #ffffff !important;
+            font-size: 20px !important;
+            font-weight: 800 !important;
+            line-height: 1.25;
+        }
+
+        .login-sidebar-subtitle {
+            color: #d8efff !important;
+            font-size: 12px !important;
+            margin-top: 6px;
+        }
+
+        section[data-testid="stSidebar"] [data-baseweb="tab-list"] {
+            background: transparent !important;
+            width: 100% !important;
+        }
+
+        section[data-testid="stSidebar"] [data-baseweb="tab"],
+        section[data-testid="stSidebar"] button[role="tab"] {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            font-weight: 750 !important;
+            background: transparent !important;
+        }
+
+        section[data-testid="stSidebar"] [data-baseweb="tab"] *,
+        section[data-testid="stSidebar"] button[role="tab"] * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        section[data-testid="stSidebar"] .auth-heading {
+            color: #ffffff !important;
+            font-size: 24px !important;
+            font-weight: 800 !important;
+            margin-top: 14px !important;
+        }
+
+        section[data-testid="stSidebar"] .auth-description {
+            color: #d8efff !important;
+            font-size: 13px !important;
+            line-height: 1.45 !important;
+            margin-bottom: 15px !important;
+        }
+
+        section[data-testid="stSidebar"] .stTextInput label {
+            color: #ffffff !important;
+        }
+
+        section[data-testid="stSidebar"] div[data-baseweb="input"],
+        section[data-testid="stSidebar"] div[data-baseweb="base-input"] {
+            background: #ffffff !important;
+            border: 1px solid #aebfd0 !important;
+        }
+
+        section[data-testid="stSidebar"] div[data-baseweb="input"] input,
+        section[data-testid="stSidebar"] div[data-baseweb="base-input"] input {
+            background: #ffffff !important;
+            color: #172b3d !important;
+            -webkit-text-fill-color: #172b3d !important;
+        }
+
+        section[data-testid="stSidebar"] .stFormSubmitButton > button {
+            width: 100% !important;
+        }
+
+        .login-staff-image {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .login-staff-image img {
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -696,23 +801,30 @@ def delete_training_record(record_id):
 # ============================================================
 
 def render_login_signup():
-    st.markdown(
-        '<div class="app-title">📊 HR Training Dashboard</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="app-subtitle">'
-        'Training management system — sign in to continue.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    # Keep Log in and Create account in the left sidebar.
+    # Staff.png occupies the main/right area.
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="login-sidebar-header">
+                <div class="login-sidebar-icon">📊</div>
+                <div class="login-sidebar-title">HR Training Dashboard</div>
+                <div class="login-sidebar-subtitle">
+                    Training management system
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    _, center, _ = st.columns([1, 1.05, 1])
+        st.markdown(
+            '<div class="sidebar-section">ACCOUNT ACCESS</div>',
+            unsafe_allow_html=True,
+        )
 
-    with center:
-        st.markdown('<div class="auth-area">', unsafe_allow_html=True)
-
-        login_tab, signup_tab = st.tabs(["🔐 Log in", "👤 Create account"])
+        login_tab, signup_tab = st.tabs(
+            ["🔐 Log in", "👤 Create account"]
+        )
 
         with login_tab:
             st.markdown(
@@ -846,7 +958,25 @@ def render_login_signup():
                             "Please check the database connection."
                         )
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    staff_image = Path("Staff.png")
+    if staff_image.exists():
+        st.markdown(
+            '<div class="login-staff-image">',
+            unsafe_allow_html=True,
+        )
+        st.image(
+            str(staff_image),
+            use_container_width=True,
+        )
+        st.markdown(
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning(
+            "Staff.png was not found. Please keep Staff.png in the "
+            "same folder as app.py."
+        )
 
 
 # ============================================================

@@ -349,33 +349,26 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page staff image */
+/* Login-page staff image — fill the entire main area */
 .login-staff-image {
     display:block !important;
     position:relative !important;
-    left:-85px !important;
-    width:calc(100% + 182px) !important;
+    left:auto !important;
+    transform:translateX(-85px) !important;
+    width:calc(100% + 170px) !important;
     max-width:none !important;
     margin:80px 0 0 0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
-}
-.login-staff-image [data-testid="stImage"] {
-    display:block !important;
-    width:100% !important;
-    max-width:none !important;
-    margin:0 !important;
-    padding:0 !important;
-}
-.login-staff-image [data-testid="stImage"] > div {
-    width:100% !important;
-    max-width:none !important;
+    overflow:visible !important;
 }
 .login-staff-image img {
     display:block !important;
     width:100% !important;
     max-width:none !important;
     height:auto !important;
+    margin:0 !important;
+    padding:0 !important;
     border-radius:14px !important;
     box-shadow:0 6px 22px rgba(0,0,0,.10) !important;
 }
@@ -2351,9 +2344,11 @@ def render_login():
     # Staff welcome image on the main login page.
     staff_image = Path("Staff.png")
     if staff_image.exists():
-        st.markdown('<div class="login-staff-image">', unsafe_allow_html=True)
-        st.image(str(staff_image), use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        staff_image_base64 = base64.b64encode(staff_image.read_bytes()).decode("ascii")
+        st.markdown(
+            f'<div class="login-staff-image"><img src="data:image/png;base64,{staff_image_base64}" alt="Staff" /></div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ============================================================

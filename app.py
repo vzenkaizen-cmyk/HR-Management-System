@@ -351,15 +351,22 @@ section[data-testid="stSidebar"] button[role="tab"] * {
 
 /* Login-page staff image */
 .login-staff-image {
-    display:flex !important;
-    justify-content:center !important;
-    align-items:center !important;
+    display:block !important;
+    width:calc(100vw - 280px) !important;
+    max-width:none !important;
+    margin:80px 0 0 -1rem !important;
+    padding:0 !important;
+}
+.login-staff-image [data-testid="stImage"] {
     width:100% !important;
-    margin:80px auto 0 auto !important;
+    max-width:none !important;
+    margin:0 !important;
+    padding:0 !important;
 }
 .login-staff-image img {
-    max-width:1100px !important;
+    display:block !important;
     width:100% !important;
+    max-width:none !important;
     height:auto !important;
     border-radius:14px !important;
     box-shadow:0 6px 22px rgba(0,0,0,.10) !important;
@@ -2337,7 +2344,7 @@ def render_login():
     staff_image = Path("Staff.png")
     if staff_image.exists():
         st.markdown('<div class="login-staff-image">', unsafe_allow_html=True)
-        st.image(str(staff_image), width=1100)
+        st.image(str(staff_image), use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 

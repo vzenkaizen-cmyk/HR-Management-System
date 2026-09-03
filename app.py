@@ -352,16 +352,24 @@ section[data-testid="stSidebar"] button[role="tab"] * {
 /* Login-page staff image */
 .login-staff-image {
     display:block !important;
-    width:calc(100vw - 280px) !important;
+    position:relative !important;
+    left:calc(-1 * (100vw - 100%)) !important;
+    width:100vw !important;
     max-width:none !important;
-    margin:80px 0 0 -1rem !important;
+    margin:80px 0 0 0 !important;
     padding:0 !important;
+    box-sizing:border-box !important;
 }
 .login-staff-image [data-testid="stImage"] {
+    display:block !important;
     width:100% !important;
     max-width:none !important;
     margin:0 !important;
     padding:0 !important;
+}
+.login-staff-image [data-testid="stImage"] > div {
+    width:100% !important;
+    max-width:none !important;
 }
 .login-staff-image img {
     display:block !important;

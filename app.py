@@ -358,7 +358,7 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     margin:80px auto 0 auto !important;
 }
 .login-staff-image img {
-    max-width:850px !important;
+    max-width:1100px !important;
     width:100% !important;
     height:auto !important;
     border-radius:14px !important;
@@ -2337,7 +2337,7 @@ def render_login():
     staff_image = Path("Staff.png")
     if staff_image.exists():
         st.markdown('<div class="login-staff-image">', unsafe_allow_html=True)
-        st.image(str(staff_image), width=850)
+        st.image(str(staff_image), width=1100)
         st.markdown('</div>', unsafe_allow_html=True)
 
 
@@ -3027,20 +3027,30 @@ def render_dashboard():
         f1, f2, f3 = r1
         f4, f5, f6 = r2
 
-        locations = ["All Plant Sites"] + sorted(
-            set(
+        # Dashboard location filter.
+        # Keep the existing location data, but remove the unwanted
+        # "All sites" entry if it exists in the database/imported data.
+        location_values = [
+            str(value).strip()
+            for value in (
                 KNOWN_POWER_PLANTS
                 + df["power_plant"]
                 .dropna()
                 .astype(str)
                 .str.strip()
                 .tolist()
-            ),
+            )
+            if str(value).strip()
+            and str(value).strip().casefold() != "all sites"
+        ]
+
+        locations = ["All Locations"] + sorted(
+            set(location_values),
             key=str.upper,
         )
 
         selected_location = f1.selectbox(
-            "Plant Site",
+            "Location",
             locations,
             key="dash_location",
         )
@@ -3132,7 +3142,7 @@ def render_dashboard():
     # ------------------------------------------------------------
     filtered = df.copy()
 
-    if selected_location != "All Plant Sites":
+    if selected_location != "All Locations":
         filtered = filtered[
             filtered["power_plant"].astype(str).str.strip()
             == selected_location
@@ -3660,12 +3670,12 @@ def render_dashboard():
     # ------------------------------------------------------------
     # BUDGET VS ACTUAL
     # ------------------------------------------------------------
-    # No separate/middle filters are used here. Plant Site, Year and
+    # No separate/middle filters are used here. Location, Year and
     # Category are controlled only by the filters at the top.
     st.divider()
     st.header("Budget vs Actuals")
     st.caption(
-        "Budget and Actual values use the Plant Site, Year and Category "
+        "Budget and Actual values use the Location, Year and Category "
         "selected at the top of the Dashboard. Actuals also follow the "
         "Quarter, Training Type and Month filters above."
     )
@@ -3713,7 +3723,7 @@ def render_dashboard():
             selected_budget_df = budget_df.copy()
             budget_period_label = "All Years"
 
-        if selected_location != "All Plant Sites":
+        if selected_location != "All Locations":
             selected_budget_df = selected_budget_df[
                 selected_budget_df["location"].astype(str).str.strip()
                 == selected_location

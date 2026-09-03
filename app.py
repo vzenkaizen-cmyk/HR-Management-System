@@ -2983,9 +2983,35 @@ def render_dashboard():
         else:
             participant_name = participant_search.strip()
 
+            # --------------------------------------------------------
+            # PARTICIPANT-SPECIFIC COST ALLOCATION
+            #
+            # A training record can contain several participants, while
+            # training_cost is stored for the whole training programme.
+            # Therefore the participant's actual allocated cost is:
+            #
+            #     Training Cost ÷ No. of Workers Attended
+            #
+            # This keeps the original database values unchanged and only
+            # calculates the participant's share for this dashboard view.
+            # --------------------------------------------------------
+            participant_filtered = participant_filtered.copy()
+
+            participant_filtered["Participant Allocated Cost (Rs.)"] = (
+                participant_filtered["training_cost"]
+                .div(
+                    participant_filtered["participants_count"].replace(
+                        0, pd.NA
+                    )
+                )
+                .fillna(0)
+            )
+
             participant_training_count = int(len(participant_filtered))
             participant_total_cost = float(
-                participant_filtered["training_cost"].sum()
+                participant_filtered[
+                    "Participant Allocated Cost (Rs.)"
+                ].sum()
             )
             participant_total_hours = float(
                 participant_filtered["training_hours"].sum()
@@ -3034,6 +3060,12 @@ def render_dashboard():
                 f"{participant_programme_hours:,.1f}",
             )
 
+            st.caption(
+                "Participant Cost = Total Training Cost ÷ Workers Attended "
+                "for each training record. The participant cost shown below "
+                "is the sum of that allocated share."
+            )
+
             p5, p6 = st.columns(2, gap="medium")
             with p5:
                 st.write("**Participant:**", participant_name)
@@ -3066,6 +3098,10 @@ def render_dashboard():
                 "training_cost"
             ]
 
+            participant_display["Participant Cost (Rs.)"] = participant_display[
+                "Participant Allocated Cost (Rs.)"
+            ]
+
             participant_display = participant_display[
                 [
                     "programme_name",
@@ -3078,6 +3114,7 @@ def render_dashboard():
                     "power_plant",
                     "Training Hours",
                     "Training Cost (Rs.)",
+                    "Participant Cost (Rs.)",
                 ]
             ]
 
@@ -3092,6 +3129,7 @@ def render_dashboard():
                 "Plant Site",
                 "Training Hours",
                 "Training Cost (Rs.)",
+                "Participant Cost (Rs.)",
             ]
 
             st.dataframe(
@@ -3107,8 +3145,94 @@ def render_dashboard():
                         "Training Cost (Rs.)",
                         format="Rs. %d",
                     ),
+                    "Participant Cost (Rs.)": st.column_config.NumberColumn(
+                        "Participant Cost (Rs.)",
+                        format="Rs. %d",
+                    ),
                 },
             )
+
+            # --------------------------------------------------------
+            # PARTICIPANT COST BREAKDOWNS
+            # These tables show the participant's allocated cost by
+            # Plant Site, Training Type, and Category.
+            # The original dashboard filters continue to apply.
+            # --------------------------------------------------------
+            st.subheader("Participant Cost Breakdown")
+
+            def _participant_cost_breakdown(group_columns, label):
+                breakdown = (
+                    participant_filtered
+                    .groupby(group_columns, dropna=False)
+                    .agg(
+                        Trainings=("id", "count"),
+                        **{
+                            "Participant Cost (Rs.)": (
+                                "Participant Allocated Cost (Rs.)",
+                                "sum",
+                            )
+                        },
+                    )
+                    .reset_index()
+                )
+
+                for column in group_columns:
+                    breakdown[column] = (
+                        breakdown[column]
+                        .fillna("Not Specified")
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                breakdown = breakdown.sort_values(
+                    "Participant Cost (Rs.)",
+                    ascending=False,
+                )
+
+                breakdown = breakdown.rename(
+                    columns={
+                        group_columns[0]: label,
+                    }
+                )
+
+                st.dataframe(
+                    breakdown,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Trainings": st.column_config.NumberColumn(
+                            "Trainings",
+                            format="%d",
+                        ),
+                        "Participant Cost (Rs.)": st.column_config.NumberColumn(
+                            "Participant Cost (Rs.)",
+                            format="Rs. %d",
+                        ),
+                    },
+                )
+
+            b1, b2, b3 = st.columns(3, gap="medium")
+
+            with b1:
+                st.write("**By Plant Site**")
+                _participant_cost_breakdown(
+                    ["power_plant"],
+                    "Plant Site",
+                )
+
+            with b2:
+                st.write("**By Training Type**")
+                _participant_cost_breakdown(
+                    ["training_type"],
+                    "Training Type",
+                )
+
+            with b3:
+                st.write("**By Category**")
+                _participant_cost_breakdown(
+                    ["category"],
+                    "Category",
+                )
 
     if filtered.empty:
         st.warning("No records match the selected filters.")

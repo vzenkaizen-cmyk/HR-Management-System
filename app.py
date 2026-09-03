@@ -1172,37 +1172,85 @@ SELECT
     total_hours,
     created_by,
     created_at
-FROM training_records
+FROM public.training_records
 ORDER BY from_date DESC NULLS LAST, id DESC
 """
 
 
-def get_training_records():
-    rows = run_query(TRAINING_SELECT)
-    df = pd.DataFrame([dict(r) for r in rows])
+def _normalise_training_dataframe(df):
+    """Normalise both the current schema and older Excel/database schemas."""
+    if df is None:
+        df = pd.DataFrame()
 
-    if df.empty:
-        return df
+    # Legacy column names that have existed in earlier versions of the app.
+    aliases = {
+        "program_name": "programme_name",
+        "programme": "programme_name",
+        "start_date": "from_date",
+        "end_date": "to_date",
+        "q": "quarter",
+        "type": "training_type",
+        "location": "power_plant",
+        "names_of_participants": "participant_names",
+        "no_of_people_attended": "participants_count",
+        "no_of_participants": "participants_count",
+        "people_attended": "participants_count",
+        "participants": "participants_count",
+        "hours": "training_hours",
+        "cost": "training_cost",
+    }
 
-    for col, default in [
-        ("power_plant", "Not Specified"),
-        ("trainer_name", "Not Specified"),
-        ("category", "Internal (Cooperate Trainings)"),
-    ]:
+    for old, new in aliases.items():
+        if old in df.columns and new not in df.columns:
+            df = df.rename(columns={old: new})
+
+    required_defaults = {
+        "id": None,
+        "programme_name": "",
+        "from_date": pd.NaT,
+        "to_date": pd.NaT,
+        "quarter": "",
+        "training_type": "Other",
+        "category": "Internal (Cooperate Trainings)",
+        "power_plant": "Not Specified",
+        "trainer_name": "Not Specified",
+        "participant_names": "",
+        "training_cost": 0,
+        "training_hours": 0,
+        "participants_count": 0,
+        "total_hours": 0,
+        "created_by": None,
+        "created_at": pd.NaT,
+    }
+
+    for col, default in required_defaults.items():
         if col not in df.columns:
             df[col] = default
-        else:
-            df[col] = df[col].fillna(default).astype(str).str.strip()
-            df.loc[df[col] == "", col] = default
+
+    if df["id"].isna().all() if "id" in df.columns else True:
+        df["id"] = range(1, len(df) + 1)
+
+    text_defaults = {
+        "programme_name": "",
+        "quarter": "",
+        "training_type": "Other",
+        "category": "Internal (Cooperate Trainings)",
+        "power_plant": "Not Specified",
+        "trainer_name": "Not Specified",
+        "participant_names": "",
+    }
+    for col, default in text_defaults.items():
+        df[col] = df[col].fillna(default).astype(str).str.strip()
+        df.loc[df[col] == "", col] = default
 
     for col in ["from_date", "to_date", "created_at"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+        df[col] = pd.to_datetime(df[col], errors="coerce")
 
     for col in ["training_cost", "training_hours", "participants_count", "total_hours"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
+    # The application uses calculated hours everywhere so an old/stale
+    # total_hours value can never break the dashboard calculations.
     df["calculated_total_hours"] = (
         df["training_hours"] * df["participants_count"]
     )
@@ -1210,41 +1258,99 @@ def get_training_records():
     return df
 
 
+def get_training_records():
+    """Load training records without crashing on a partially migrated table.
+
+    The deployed app previously failed when Neon still had an older
+    training_records schema.  First use the normal typed SELECT; if PostgreSQL
+    reports a missing/legacy column, fall back to SELECT * and normalise the
+    available columns.  This keeps the dashboard usable while the schema is
+    being brought to the current structure.
+    """
+    try:
+        rows = run_query(TRAINING_SELECT)
+        df = pd.DataFrame([dict(r) for r in rows])
+        return _normalise_training_dataframe(df)
+    except Exception as first_error:
+        try:
+            rows = run_query(
+                """
+                SELECT *
+                FROM public.training_records
+                ORDER BY
+                    CASE WHEN EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'training_records'
+                          AND column_name = 'from_date'
+                    ) THEN 0 ELSE 1 END,
+                    id DESC
+                """
+            )
+            df = pd.DataFrame([dict(r) for r in rows])
+            return _normalise_training_dataframe(df)
+        except Exception:
+            # Raise the original database exception so Streamlit shows the
+            # actual cause if the table itself is unavailable.
+            raise first_error
+
+
 def get_locations():
     # Location is no longer stored separately for training records.
     return get_power_plants()
 
 def get_power_plants():
-    rows = run_query(
-        """
-        SELECT DISTINCT TRIM(power_plant) AS power_plant
-        FROM training_records
-        WHERE power_plant IS NOT NULL AND TRIM(power_plant) <> ''
-        ORDER BY TRIM(power_plant)
-        """
-    )
-    db_plants = [
-        str(dict(r).get("power_plant")).strip()
-        for r in rows
-        if dict(r).get("power_plant")
-    ]
+    try:
+        rows = run_query(
+            """
+            SELECT DISTINCT TRIM(power_plant) AS power_plant
+            FROM public.training_records
+            WHERE power_plant IS NOT NULL AND TRIM(power_plant) <> ''
+            ORDER BY TRIM(power_plant)
+            """
+        )
+        db_plants = [
+            str(dict(r).get("power_plant")).strip()
+            for r in rows
+            if dict(r).get("power_plant")
+        ]
+    except Exception:
+        db_plants = []
+
     return sorted(set(KNOWN_POWER_PLANTS + db_plants), key=str.upper)
 
 
 def get_existing_keys():
-    rows = run_query(
-        """
-        SELECT programme_name, from_date, COALESCE(power_plant,'') AS power_plant
-        FROM training_records
-        """
-    )
-    keys = set()
+    try:
+        rows = run_query(
+            """
+            SELECT programme_name, from_date, COALESCE(power_plant,'') AS power_plant
+            FROM public.training_records
+            """
+        )
+    except Exception:
+        # Keep Excel import usable even if the database is still on a legacy
+        # column naming scheme.
+        rows = run_query("SELECT * FROM public.training_records")
 
+    keys = set()
     for r in rows:
         record = dict(r)
-        programme = str(record.get("programme_name") or "").strip().lower()
-        power_plant = str(record.get("power_plant") or "").strip().lower()
-        dt = pd.to_datetime(record.get("from_date"), errors="coerce")
+        programme = str(
+            record.get("programme_name")
+            or record.get("program_name")
+            or record.get("programme")
+            or ""
+        ).strip().lower()
+        power_plant = str(
+            record.get("power_plant")
+            or record.get("location")
+            or ""
+        ).strip().lower()
+        dt = pd.to_datetime(
+            record.get("from_date") or record.get("start_date"),
+            errors="coerce",
+        )
         date_key = dt.date() if not pd.isna(dt) else None
         keys.add((programme, date_key, power_plant))
 
@@ -2561,21 +2667,35 @@ def render_data_entry():
 # ============================================================
 # IMPORT EXCEL
 # ============================================================
-# IMPORT EXCEL
-# ============================================================
-
-def clear_training_records():
-    """Remove all existing training records but keep the table/schema."""
-    run_write("DELETE FROM public.training_records")
-
 
 def render_import_excel():
     user = require_user()
 
     st.title("Import Excel")
     st.caption(
-        "Upload the HR Training Records workbook, review the cleaned data, "
-        "then either add new records or replace the existing Training Records."
+        "Import the HR Training Records workbook, "
+        "recalculate total hours, and open the dashboard."
+    )
+
+    st.markdown(
+        """
+        <div class="formula-box">
+            <div class="formula-title">
+                Automatic Total Hours Rule
+            </div>
+            <div class="formula-text">
+                Total Training Hours =
+                Training Hours per Worker × No. of Workers Attended
+            </div>
+            <div class="small-note">
+                The Excel Total Hours value is not trusted.
+                The system recalculates it for every imported row.
+                If Category is missing, the record is classified as
+                Internal (Cooperate Trainings).
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     uploaded = st.file_uploader(
@@ -2585,11 +2705,15 @@ def render_import_excel():
     )
 
     if uploaded is None:
-        st.info("Upload the HR Training Records workbook to continue.")
+        st.info(
+            "Upload the HR Training workbook to continue."
+        )
         return
 
     try:
-        source_df, header_row = prepare_excel_dataframe(uploaded)
+        source_df, header_row = prepare_excel_dataframe(
+            uploaded
+        )
 
         st.success(
             f"File loaded successfully — "
@@ -2603,39 +2727,81 @@ def render_import_excel():
                 "Imported records will use Internal (Cooperate Trainings)."
             )
 
-        cleaned, validation_errors = transform_import_rows(source_df)
+        cleaned, validation_errors = transform_import_rows(
+            source_df
+        )
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Rows detected", f"{len(source_df):,}")
-        c2.metric("Valid rows", f"{len(cleaned):,}")
-        c3.metric("Rows with issues", f"{len(validation_errors):,}")
+
+        c1.metric(
+            "Rows detected",
+            f"{len(source_df):,}",
+        )
+        c2.metric(
+            "Valid rows",
+            f"{len(cleaned):,}",
+        )
+        c3.metric(
+            "Rows with issues",
+            f"{len(validation_errors):,}",
+        )
         c4.metric(
             "Calculated Hours",
-            f"{cleaned['total_hours'].sum():,.1f}"
-            if not cleaned.empty else "0.0",
+            (
+                f"{cleaned['total_hours'].sum():,.1f}"
+                if not cleaned.empty
+                else "0.0"
+            ),
         )
+
+        if not cleaned.empty:
+            detected_years = sorted(
+                pd.to_datetime(
+                    cleaned["from_date"],
+                    errors="coerce",
+                )
+                .dt.year.dropna()
+                .astype(int)
+                .unique()
+                .tolist()
+            )
+
+            if detected_years:
+                st.info(
+                    "Detected training years in this Excel file: "
+                    + ", ".join(map(str, detected_years))
+                )
 
         if validation_errors:
             with st.expander(
                 f"Review {len(validation_errors)} validation issue(s)"
             ):
-                st.code("\n".join(validation_errors[:50]))
+                st.code(
+                    "\n".join(validation_errors[:50])
+                )
 
         if cleaned.empty:
-            st.error("No valid training records were found in this file.")
+            st.error(
+                "No valid training records were found in this file."
+            )
             return
 
         if "total_hours" in source_df.columns:
             source_total = pd.to_numeric(
-                source_df["total_hours"], errors="coerce"
+                source_df["total_hours"],
+                errors="coerce",
             )
             source_hours = pd.to_numeric(
-                source_df["training_hours"], errors="coerce"
+                source_df["training_hours"],
+                errors="coerce",
             )
             source_people = pd.to_numeric(
-                source_df["participants_count"], errors="coerce"
+                source_df["participants_count"],
+                errors="coerce",
             )
+
             calculated = source_hours * source_people
+
             mismatch_count = int(
                 ((source_total - calculated).abs() > 0.001).sum()
             )
@@ -2644,137 +2810,102 @@ def render_import_excel():
 
         if mismatch_count:
             st.warning(
-                f"{mismatch_count} row(s) have an Excel Total Hours value "
-                "that does not match Training Hours × Workers. "
-                "The system will use the calculated value."
+                f"{mismatch_count} row(s) have an Excel "
+                f"Total Hours value that does not match "
+                f"Training Hours × Workers. "
+                f"The system will use the calculated value."
             )
 
         st.subheader("Cleaned import preview")
 
         preview = cleaned.copy()
         preview["from_date"] = pd.to_datetime(
-            preview["from_date"], errors="coerce"
+            preview["from_date"]
         ).dt.strftime("%Y-%m-%d")
         preview["to_date"] = pd.to_datetime(
-            preview["to_date"], errors="coerce"
+            preview["to_date"]
         ).dt.strftime("%Y-%m-%d")
 
-        preview_columns = [
-            "programme_name",
-            "from_date",
-            "to_date",
-            "quarter",
-            "training_type",
-            "category",
-            "trainer_name",
-            "power_plant",
-            "training_cost",
-            "training_hours",
-            "participants_count",
-            "total_hours",
-        ]
-
         st.dataframe(
-            preview[preview_columns],
+            preview[
+                [
+                    "programme_name",
+                    "from_date",
+                    "to_date",
+                    "quarter",
+                    "training_type",
+                    "category",
+                    "trainer_name",
+                    "power_plant",
+                    "training_cost",
+                    "training_hours",
+                    "participants_count",
+                    "total_hours",
+                ]
+            ],
             use_container_width=True,
             hide_index=True,
             height=430,
         )
 
         st.divider()
-        st.subheader("Database Import")
-
-        st.info(
-            f"This workbook contains {len(cleaned):,} valid records. "
-            "Use Replace ALL when this Excel file should become the complete "
-            "Training Records dataset."
+        st.subheader("Import into Training Records")
+        st.caption(
+            "Existing records with the same Programme + From Date "
+            "+ Power Plant are skipped to prevent "
+            "duplicate imports."
         )
 
-        existing_keys = get_existing_keys()
+        replace_existing = st.checkbox(
+            "Replace all existing Training Records before importing this Excel",
+            value=False,
+            key="replace_training_records_before_import",
+            help=(
+                "Use this when the Excel file is the new master dataset. "
+                "Only training_records will be cleared; users and budgets are not changed."
+            ),
+        )
 
-        col_add, col_replace = st.columns(2)
-
-        with col_add:
-            if st.button(
-                "Import New Records Only",
-                use_container_width=True,
-                key="import_new_records_button",
-            ):
-                inserted = 0
-                skipped = 0
-                failed = []
-
-                for _, row in cleaned.iterrows():
-                    key = (
-                        str(row["programme_name"]).strip().lower(),
-                        row["from_date"],
-                        str(row["power_plant"]).strip().lower(),
-                    )
-
-                    if key in existing_keys:
-                        skipped += 1
-                        continue
-
-                    try:
-                        insert_training_record(
-                            programme_name=row["programme_name"],
-                            from_date=row["from_date"],
-                            to_date=row["to_date"],
-                            quarter=row["quarter"],
-                            training_type=row["training_type"],
-                            category=row["category"],
-                            power_plant=row["power_plant"],
-                            trainer_name=row["trainer_name"],
-                            participant_names=row["participant_names"],
-                            training_cost=row["training_cost"],
-                            training_hours=row["training_hours"],
-                            participants_count=row["participants_count"],
-                            total_hours=row["total_hours"],
-                            created_by=(user or {}).get("id"),
-                        )
-                        inserted += 1
-                        existing_keys.add(key)
-                    except Exception as e:
-                        failed.append(
-                            f"{row['programme_name']}: {e}"
-                        )
-
-                if inserted:
-                    st.success(
-                        f"{inserted:,} new training record(s) imported."
-                    )
-                if skipped:
-                    st.info(
-                        f"{skipped:,} existing record(s) were skipped."
-                    )
-                if failed:
-                    st.warning(
-                        f"{len(failed):,} record(s) could not be imported."
-                    )
-                    st.code("\n".join(failed[:30]))
-
-        with col_replace:
-            replace_clicked = st.button(
-                "Replace ALL Training Records",
-                type="primary",
-                use_container_width=True,
-                key="replace_all_training_records_button",
+        if replace_existing:
+            st.warning(
+                "This will delete the current training_records data before importing the Excel file. "
+                "Users, accounts and training budgets will not be deleted."
             )
 
-        if replace_clicked:
-            try:
-                # Delete old rows only after the new workbook has been
-                # successfully read and validated.
-                clear_training_records()
-            except Exception as e:
-                st.error("Could not clear the existing Training Records.")
-                st.exception(e)
-                return
+        if st.button(
+            "Replace Training Records & Import Excel" if replace_existing else "Import Excel & Open Dashboard",
+            type="primary",
+            use_container_width=True,
+        ):
+            if replace_existing:
+                try:
+                    run_write("TRUNCATE TABLE public.training_records RESTART IDENTITY")
+                except Exception as e:
+                    st.error("Unable to clear the existing training records.")
+                    with st.expander("Technical details"):
+                        st.exception(e)
+                    return
 
+            existing_keys = set() if replace_existing else get_existing_keys()
             inserted = 0
+            skipped = 0
             failed = []
 
             for _, row in cleaned.iterrows():
+                key = (
+                    str(row["programme_name"])
+                    .strip()
+                    .lower(),
+                    row["from_date"],
+                    str(row["power_plant"])
+                    .strip()
+                    .lower(),
+                )
+
+                if key in existing_keys:
+                    skipped += 1
+                    continue
+
                 try:
                     insert_training_record(
                         programme_name=row["programme_name"],
@@ -2792,38 +2923,2444 @@ def render_import_excel():
                         total_hours=row["total_hours"],
                         created_by=(user or {}).get("id"),
                     )
+
                     inserted += 1
+                    existing_keys.add(key)
+
                 except Exception as e:
                     failed.append(
-                        f"Row {inserted + 2} — "
                         f"{row['programme_name']}: {e}"
                     )
 
-            if inserted == len(cleaned) and not failed:
+            st.session_state["last_import_summary"] = {
+                "inserted": inserted,
+                "skipped": skipped,
+                "failed": len(failed),
+                "calculated_hours": float(
+                    cleaned["total_hours"].sum()
+                ),
+            }
+
+            if failed:
+                st.session_state["last_import_errors"] = (
+                    failed[:30]
+                )
+
+            if inserted:
                 st.success(
-                    f"Previous Training Records were removed and "
-                    f"{inserted:,} Excel records were imported successfully."
+                    f"{inserted:,} training record(s) "
+                    f"imported successfully."
                 )
-                st.session_state["last_import_summary"] = {
-                    "inserted": inserted,
-                    "skipped": 0,
-                    "failed": 0,
-                    "calculated_hours": float(
-                        cleaned["total_hours"].sum()
-                    ),
-                }
-                st.rerun()
-            else:
-                st.warning(
-                    f"{inserted:,} of {len(cleaned):,} records were imported. "
-                    f"{len(failed):,} rows failed."
+
+            if skipped:
+                st.info(
+                    f"{skipped:,} existing record(s) "
+                    f"skipped to prevent duplicates."
                 )
-                if failed:
+
+            if failed:
+                st.error(
+                    f"{len(failed):,} record(s) "
+                    f"could not be imported."
+                )
+                with st.expander("Import errors"):
                     st.code("\n".join(failed[:30]))
 
+            st.session_state.hr_page = "Dashboard"
+            st.rerun()
+
     except Exception as e:
-        st.error("Unable to read or import the selected file.")
-        st.exception(e)
+        st.error(
+            "The selected Excel file could not be processed."
+        )
+        with st.expander("Technical details"):
+            st.exception(e)
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+def render_dashboard():
+    require_user()
+
+    st.title("Training Dashboard")
+    st.caption(
+        "Training performance, budget and actual expenditure."
+    )
+
+    summary = st.session_state.pop("last_import_summary", None)
+
+    if summary:
+        st.markdown(
+            f"""
+            <div class="success-box">
+                <strong>Excel import completed.</strong><br>
+                Imported: {summary['inserted']:,} ·
+                Skipped duplicates: {summary['skipped']:,} ·
+                Failed: {summary['failed']:,}<br>
+                Recalculated total training hours:
+                {summary['calculated_hours']:,.1f}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    df = get_training_records()
+
+    if df.empty:
+        st.info(
+            "No training records are available. "
+            "Import the Excel file or add a record from Data Entry."
+        )
+        return
+
+    # ------------------------------------------------------------
+    # ALL DASHBOARD FILTERS
+    # ------------------------------------------------------------
+    # All filters are kept together at the top of the Dashboard.
+    # The selected Plant Site / Year / Category also drive the
+    # Budget vs Actual section below.
+    with st.container(border=True, key="dashboard_filters"):
+        r1 = st.columns([1.35, 1.35, 1.35], gap="small")
+        r2 = st.columns([2.05, 1.85, 1.35], gap="small")
+        f1, f2, f3 = r1
+        f4, f5, f6 = r2
+
+        locations = ["All Plant Sites"] + sorted(
+            set(
+                KNOWN_POWER_PLANTS
+                + df["power_plant"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .tolist()
+            ),
+            key=str.upper,
+        )
+
+        selected_location = f1.selectbox(
+            "Plant Site",
+            locations,
+            key="dash_location",
+        )
+
+        years_in_data = sorted(
+            df["from_date"]
+            .dropna()
+            .dt.year
+            .astype(int)
+            .unique()
+            .tolist(),
+            reverse=True,
+        )
+
+        years = []
+        for y in SUPPORTED_YEARS + years_in_data:
+            if y not in years:
+                years.append(y)
+
+        selected_year = f2.selectbox(
+            "Year",
+            ["All Years"] + years,
+            key="dash_year",
+        )
+
+        quarters = ["All Quarters"] + [
+            q
+            for q in ["Q1", "Q2", "Q3", "Q4"]
+            if q in set(
+                df["quarter"]
+                .dropna()
+                .astype(str)
+            )
+        ]
+
+        selected_quarter = f3.selectbox(
+            "Quarter",
+            quarters,
+            key="dash_quarter",
+        )
+
+        selected_type = f4.selectbox(
+            "Training Type",
+            ["All Types"] + TRAINING_TYPES.copy(),
+            key="dash_type",
+        )
+
+        selected_category = f5.selectbox(
+            "Category",
+            ["All Categories"] + TRAINING_CATEGORIES.copy(),
+            key="dash_category",
+        )
+
+        month_options = {
+            "All Months": None,
+            "January": 1,
+            "February": 2,
+            "March": 3,
+            "April": 4,
+            "May": 5,
+            "June": 6,
+            "July": 7,
+            "August": 8,
+            "September": 9,
+            "October": 10,
+            "November": 11,
+            "December": 12,
+        }
+
+        selected_month = f6.selectbox(
+            "Month",
+            list(month_options.keys()),
+            key="dash_month",
+        )
+
+        # --------------------------------------------------------
+        # PARTICIPANT SEARCH
+        # This is an additional dashboard filter only. It does not
+        # remove or change any of the existing dashboard filters.
+        # --------------------------------------------------------
+        participant_search = st.text_input(
+            "Search Participant",
+            placeholder="Type participant name, e.g. Samoda...",
+            key="dash_participant_search",
+        )
+
+    # ------------------------------------------------------------
+    # APPLY TOP FILTERS
+    # ------------------------------------------------------------
+    filtered = df.copy()
+
+    if selected_location != "All Plant Sites":
+        filtered = filtered[
+            filtered["power_plant"].astype(str).str.strip()
+            == selected_location
+        ]
+
+    if selected_year != "All Years":
+        filtered = filtered[
+            filtered["from_date"].dt.year == int(selected_year)
+        ]
+
+    if selected_quarter != "All Quarters":
+        filtered = filtered[
+            filtered["quarter"] == selected_quarter
+        ]
+
+    if selected_type != "All Types":
+        filtered = filtered[
+            filtered["training_type"] == selected_type
+        ]
+
+    if selected_category != "All Categories":
+        filtered = filtered[
+            filtered["category"] == selected_category
+        ]
+
+    month_number = month_options[selected_month]
+    if month_number is not None:
+        filtered = filtered[
+            filtered["from_date"].dt.month == int(month_number)
+        ]
+
+    # ------------------------------------------------------------
+    # PARTICIPANT SUMMARY
+    # The participant search follows all the existing dashboard
+    # filters above, so the summary shows information only for the
+    # selected Plant Site / Year / Quarter / Type / Category / Month.
+    # The original dashboard calculations below remain unchanged.
+    # ------------------------------------------------------------
+    participant_filtered = filtered.copy()
+
+    if participant_search.strip():
+        participant_query = participant_search.strip().lower()
+        participant_mask = (
+            participant_filtered["participant_names"]
+            .fillna("")
+            .astype(str)
+            .str.lower()
+            .str.contains(participant_query, regex=False, na=False)
+        )
+        participant_filtered = participant_filtered[participant_mask]
+
+        st.divider()
+        st.subheader("Participant Summary")
+        st.caption(
+            "Showing training information for the searched participant "
+            "within the selected dashboard filters."
+        )
+
+        if participant_filtered.empty:
+            st.warning(
+                f"No training records found for participant "
+                f"'{participant_search.strip()}' with the selected filters."
+            )
+        else:
+            participant_name = participant_search.strip()
+
+            # --------------------------------------------------------
+            # PARTICIPANT-SPECIFIC COST ALLOCATION
+            #
+            # A training record can contain several participants, while
+            # training_cost is stored for the whole training programme.
+            # Therefore the participant's actual allocated cost is:
+            #
+            #     Training Cost ÷ No. of Workers Attended
+            #
+            # This keeps the original database values unchanged and only
+            # calculates the participant's share for this dashboard view.
+            # --------------------------------------------------------
+            participant_filtered = participant_filtered.copy()
+
+            participant_filtered["Participant Allocated Cost (Rs.)"] = (
+                participant_filtered["training_cost"]
+                .div(
+                    participant_filtered["participants_count"].replace(
+                        0, pd.NA
+                    )
+                )
+                .fillna(0)
+            )
+
+            participant_training_count = int(len(participant_filtered))
+            participant_total_cost = float(
+                participant_filtered[
+                    "Participant Allocated Cost (Rs.)"
+                ].sum()
+            )
+            participant_total_hours = float(
+                participant_filtered["training_hours"].sum()
+            )
+            participant_programme_hours = float(
+                participant_filtered["calculated_total_hours"].sum()
+            )
+
+            participant_plants = sorted(
+                participant_filtered["power_plant"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .loc[lambda s: s != ""]
+                .unique()
+                .tolist(),
+                key=str.upper,
+            )
+
+            participant_types = sorted(
+                participant_filtered["training_type"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .loc[lambda s: s != ""]
+                .unique()
+                .tolist(),
+                key=str.upper,
+            )
+
+            p1, p2, p3, p4 = st.columns(4, gap="medium")
+            p1.metric(
+                "Trainings Attended",
+                f"{participant_training_count:,}",
+            )
+            p2.metric(
+                "Training Cost",
+                f"Rs. {participant_total_cost:,.0f}",
+            )
+            p3.metric(
+                "Training Hours",
+                f"{participant_total_hours:,.1f}",
+            )
+            p4.metric(
+                "Programme Hours",
+                f"{participant_programme_hours:,.1f}",
+            )
+
+            st.caption(
+                "Participant Cost = Total Training Cost ÷ Workers Attended "
+                "for each training record. The participant cost shown below "
+                "is the sum of that allocated share."
+            )
+
+            p5, p6 = st.columns(2, gap="medium")
+            with p5:
+                st.write("**Participant:**", participant_name)
+                st.write(
+                    "**Plant Site(s):**",
+                    ", ".join(participant_plants)
+                    if participant_plants
+                    else "Not Specified",
+                )
+
+            with p6:
+                st.write(
+                    "**Training Type(s):**",
+                    ", ".join(participant_types)
+                    if participant_types
+                    else "Not Specified",
+                )
+
+            participant_display = participant_filtered.copy()
+            participant_display["From Date"] = participant_display[
+                "from_date"
+            ].dt.strftime("%Y-%m-%d")
+            participant_display["To Date"] = participant_display[
+                "to_date"
+            ].dt.strftime("%Y-%m-%d")
+            participant_display["Training Hours"] = participant_display[
+                "training_hours"
+            ]
+            participant_display["Training Cost (Rs.)"] = participant_display[
+                "training_cost"
+            ]
+
+            participant_display["Participant Cost (Rs.)"] = participant_display[
+                "Participant Allocated Cost (Rs.)"
+            ]
+
+            participant_display = participant_display[
+                [
+                    "programme_name",
+                    "From Date",
+                    "To Date",
+                    "quarter",
+                    "training_type",
+                    "category",
+                    "trainer_name",
+                    "power_plant",
+                    "Training Hours",
+                    "Training Cost (Rs.)",
+                    "Participant Cost (Rs.)",
+                ]
+            ]
+
+            participant_display.columns = [
+                "Programme",
+                "From Date",
+                "To Date",
+                "Quarter",
+                "Training Type",
+                "Category",
+                "Trainer",
+                "Plant Site",
+                "Training Hours",
+                "Training Cost (Rs.)",
+                "Participant Cost (Rs.)",
+            ]
+
+            st.dataframe(
+                participant_display,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Training Hours": st.column_config.NumberColumn(
+                        "Training Hours",
+                        format="%.1f",
+                    ),
+                    "Training Cost (Rs.)": st.column_config.NumberColumn(
+                        "Training Cost (Rs.)",
+                        format="Rs. %d",
+                    ),
+                    "Participant Cost (Rs.)": st.column_config.NumberColumn(
+                        "Participant Cost (Rs.)",
+                        format="Rs. %d",
+                    ),
+                },
+            )
+
+            # --------------------------------------------------------
+            # PARTICIPANT COST BREAKDOWNS
+            # These tables show the participant's allocated cost by
+            # Plant Site, Training Type, and Category.
+            # The original dashboard filters continue to apply.
+            # --------------------------------------------------------
+            st.subheader("Participant Cost Breakdown")
+
+            def _participant_cost_breakdown(group_columns, label):
+                breakdown = (
+                    participant_filtered
+                    .groupby(group_columns, dropna=False)
+                    .agg(
+                        Trainings=("id", "count"),
+                        **{
+                            "Participant Cost (Rs.)": (
+                                "Participant Allocated Cost (Rs.)",
+                                "sum",
+                            )
+                        },
+                    )
+                    .reset_index()
+                )
+
+                for column in group_columns:
+                    breakdown[column] = (
+                        breakdown[column]
+                        .fillna("Not Specified")
+                        .astype(str)
+                        .str.strip()
+                    )
+
+                breakdown = breakdown.sort_values(
+                    "Participant Cost (Rs.)",
+                    ascending=False,
+                )
+
+                breakdown = breakdown.rename(
+                    columns={
+                        group_columns[0]: label,
+                    }
+                )
+
+                st.dataframe(
+                    breakdown,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Trainings": st.column_config.NumberColumn(
+                            "Trainings",
+                            format="%d",
+                        ),
+                        "Participant Cost (Rs.)": st.column_config.NumberColumn(
+                            "Participant Cost (Rs.)",
+                            format="Rs. %d",
+                        ),
+                    },
+                )
+
+            b1, b2, b3 = st.columns(3, gap="medium")
+
+            with b1:
+                st.write("**By Plant Site**")
+                _participant_cost_breakdown(
+                    ["power_plant"],
+                    "Plant Site",
+                )
+
+            with b2:
+                st.write("**By Training Type**")
+                _participant_cost_breakdown(
+                    ["training_type"],
+                    "Training Type",
+                )
+
+            with b3:
+                st.write("**By Category**")
+                _participant_cost_breakdown(
+                    ["category"],
+                    "Category",
+                )
+
+    # The participant search is an additional filter. When a participant
+    # is entered, all KPI values below use that participant's matching
+    # records, while the participant-specific section above continues to
+    # show the detailed cost allocation. With no participant search, the
+    # original dashboard dataset is used unchanged.
+    dashboard_source = (
+        participant_filtered.copy()
+        if participant_search.strip()
+        else filtered.copy()
+    )
+
+    if dashboard_source.empty:
+        if not participant_search.strip():
+            st.warning("No records match the selected filters.")
+    else:
+        # For a participant view, each programme's actual cost is allocated
+        # to that participant as Training Cost / Workers Attended.
+        if participant_search.strip():
+            dashboard_source["dashboard_actual_cost"] = (
+                dashboard_source["training_cost"]
+                .div(
+                    dashboard_source["participants_count"].replace(
+                        0, pd.NA
+                    )
+                )
+                .fillna(0)
+            )
+        else:
+            dashboard_source["dashboard_actual_cost"] = dashboard_source[
+                "training_cost"
+            ]
+
+        # In participant mode, Training Hours means the hours attended
+        # by that participant (hours per worker), not the full programme
+        # person-hours. With no participant search, retain the original
+        # programme-hours calculation.
+        if participant_search.strip():
+            total_hours = float(
+                dashboard_source["training_hours"].sum()
+            )
+        else:
+            total_hours = float(
+                dashboard_source["calculated_total_hours"].sum()
+            )
+        programmes = int(len(dashboard_source))
+        workers = float(
+            dashboard_source["participants_count"].sum()
+        )
+        total_cost = float(
+            dashboard_source["dashboard_actual_cost"].sum()
+        )
+
+        avg_hours_per_programme = (
+            total_hours / programmes if programmes else 0
+        )
+        avg_hours_per_worker = (
+            total_hours / workers if workers else 0
+        )
+
+        st.write("")
+
+        k1, k2, k3 = st.columns(3, gap="medium")
+        k1.metric("Training Programmes", f"{programmes:,}")
+        k2.metric("Workers Attended", f"{workers:,.0f}")
+        k3.metric("Total Training Hours", f"{total_hours:,.1f}")
+
+        st.write("")
+
+        k4, k5, k6 = st.columns(3, gap="medium")
+        k4.metric("Avg. Hours / Programme", f"{avg_hours_per_programme:,.1f}")
+        k5.metric("Training Cost", f"Rs. {total_cost:,.0f}")
+        k6.metric("Hours / Worker", f"{avg_hours_per_worker:,.1f}")
+
+        st.write("")
+
+        # When a participant is searched, the charts below use only that
+        # participant's matched records. Participant actual cost is allocated
+        # per training record as Training Cost / Workers Attended.
+        chart_source = dashboard_source.copy()
+        participant_chart_active = bool(participant_search.strip())
+
+        if participant_chart_active:
+            chart_source["participant_allocated_cost"] = chart_source[
+                "dashboard_actual_cost"
+            ]
+
+        # These charts remain tied to the top filters. When a participant
+        # is searched, they additionally become participant-specific.
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.subheader("Monthly Training Hours")
+
+            if participant_chart_active:
+                monthly_source = chart_source.assign(
+                    month_num=chart_source["from_date"].dt.month,
+                    month_name=chart_source["from_date"].dt.month_name(),
+                    year=chart_source["from_date"].dt.year,
+                )
+                monthly = (
+                    monthly_source
+                    .groupby(
+                        ["year", "month_num", "month_name"],
+                        as_index=False,
+                    )["training_hours"]
+                    .sum()
+                    .sort_values(["year", "month_num"])
+                )
+                monthly_hours_column = "training_hours"
+            else:
+                monthly = (
+                    chart_source.assign(
+                        month_num=chart_source["from_date"].dt.month,
+                        month_name=chart_source["from_date"].dt.month_name(),
+                        year=chart_source["from_date"].dt.year,
+                    )
+                    .groupby(
+                        ["year", "month_num", "month_name"],
+                        as_index=False,
+                    )["calculated_total_hours"]
+                    .sum()
+                    .sort_values(["year", "month_num"])
+                )
+                monthly_hours_column = "calculated_total_hours"
+
+            if not monthly.empty:
+                monthly["Month"] = monthly.apply(
+                    lambda r: (
+                        f"{r['month_name']} {int(r['year'])}"
+                        if chart_source["from_date"].dt.year.nunique() > 1
+                        else r["month_name"]
+                    ),
+                    axis=1,
+                )
+                monthly_chart = monthly.set_index("Month")[
+                    [monthly_hours_column]
+                ]
+                monthly_chart.columns = ["Total Training Hours"]
+                st.line_chart(
+                    monthly_chart,
+                    use_container_width=True,
+                )
+
+        with c2:
+            st.subheader("Training Hours by Type")
+            if participant_chart_active:
+                by_type = (
+                    chart_source.groupby("training_type")[
+                        "training_hours"
+                    ]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .to_frame("Training Hours")
+                )
+            else:
+                by_type = (
+                    chart_source.groupby("training_type")[
+                        "calculated_total_hours"
+                    ]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .to_frame("Training Hours")
+                )
+            st.bar_chart(
+                by_type,
+                use_container_width=True,
+            )
+
+        c3, c4 = st.columns(2)
+
+        with c3:
+            st.subheader("Programmes by Category")
+            by_category = (
+                chart_source.groupby("category")["id"]
+                .count()
+                .reindex(TRAINING_CATEGORIES, fill_value=0)
+                .to_frame("Programmes")
+            )
+            st.bar_chart(
+                by_category,
+                use_container_width=True,
+            )
+
+        with c4:
+            st.subheader("Training Cost by Category")
+            if participant_chart_active:
+                by_cost_category = (
+                    chart_source.groupby("category")[
+                        "dashboard_actual_cost"
+                    ]
+                    .sum()
+                    .reindex(TRAINING_CATEGORIES, fill_value=0)
+                    .to_frame("Actual Cost")
+                )
+            else:
+                by_cost_category = (
+                    chart_source.groupby("category")["training_cost"]
+                    .sum()
+                    .reindex(TRAINING_CATEGORIES, fill_value=0)
+                    .to_frame("Actual Cost")
+                )
+            st.bar_chart(
+                by_cost_category,
+                use_container_width=True,
+            )
+
+
+    # ------------------------------------------------------------
+    # BUDGET VS ACTUAL
+    # ------------------------------------------------------------
+    # No separate/middle filters are used here. Plant Site, Year and
+    # Category are controlled only by the filters at the top.
+    st.divider()
+    st.header("Budget vs Actuals")
+    st.caption(
+        "Budget and Actual values use the Plant Site, Year and Category "
+        "selected at the top of the Dashboard. Actuals also follow the "
+        "Quarter, Training Type and Month filters above."
+    )
+
+    budget_df = get_budget_records()
+
+    if budget_df.empty:
+        st.info(
+            "No budgets have been entered yet. "
+            "Use Budget Entry to add budgets by Plant Site and Category."
+        )
+    else:
+        budget_df = budget_df[
+            budget_df["location"]
+            .astype(str)
+            .str.strip()
+            .isin(BUDGET_LOCATIONS)
+        ].copy()
+
+        # Power Plant is the single Plant Site field for actual training data.
+        power_plant_series = (
+            df["power_plant"].fillna("").astype(str).str.strip()
+            if "power_plant" in df.columns
+            else pd.Series("", index=df.index)
+        )
+
+        budget_actual_df = df.copy()
+        budget_actual_df["plant_site"] = power_plant_series
+
+        # Budget is annual, so it follows the top Year filter only.
+        # When All Years is selected, use the latest available budget year.
+        budget_years = sorted(
+            budget_df["budget_year"].unique().tolist(),
+            reverse=True,
+        )
+
+        if selected_year != "All Years" and int(selected_year) in budget_years:
+            b_year = int(selected_year)
+            selected_budget_df = budget_df[
+                budget_df["budget_year"] == int(b_year)
+            ].copy()
+            budget_period_label = str(b_year)
+        else:
+            # All Years at the top means all available budget years.
+            selected_budget_df = budget_df.copy()
+            budget_period_label = "All Years"
+
+        if selected_location != "All Plant Sites":
+            selected_budget_df = selected_budget_df[
+                selected_budget_df["location"].astype(str).str.strip()
+                == selected_location
+            ]
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["plant_site"] == selected_location
+            ].copy()
+
+        # The top Year filter applies to Actuals as well.
+        if selected_year != "All Years":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["from_date"].dt.year == int(selected_year)
+            ].copy()
+
+        # The top Category filter drives both Budget and Actual.
+        if selected_category != "All Categories":
+            selected_budget_df = selected_budget_df[
+                selected_budget_df["category"] == selected_category
+            ]
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["category"] == selected_category
+            ].copy()
+
+        # The remaining top filters apply to Actuals.
+        if selected_quarter != "All Quarters":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["quarter"] == selected_quarter
+            ].copy()
+
+        if selected_type != "All Types":
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["training_type"] == selected_type
+            ].copy()
+
+        if month_number is not None:
+            budget_actual_df = budget_actual_df[
+                budget_actual_df["from_date"].dt.month == int(month_number)
+            ].copy()
+
+        selected_budget_total = float(
+            selected_budget_df["budget_amount"].sum()
+        )
+
+        # The Budget is not participant-specific. The Actual is participant-
+        # specific when Search Participant is used, using the same allocation
+        # rule as the participant summary: Training Cost / Workers Attended.
+        if participant_search.strip():
+            if participant_filtered.empty:
+                selected_actual_total = 0.0
+                budget_actual_df = participant_filtered.copy()
+                budget_actual_df["participant_allocated_cost"] = pd.Series(
+                    dtype=float
+                )
+            else:
+                budget_actual_df = participant_filtered.copy()
+                budget_actual_df["participant_allocated_cost"] = (
+                    budget_actual_df["training_cost"]
+                    .div(
+                        budget_actual_df["participants_count"].replace(
+                            0, pd.NA
+                        )
+                    )
+                    .fillna(0)
+                )
+                selected_actual_total = float(
+                    budget_actual_df["participant_allocated_cost"].sum()
+                )
+        else:
+            selected_actual_total = float(
+                budget_actual_df["training_cost"].sum()
+            )
+
+        selected_variance = (
+            selected_budget_total - selected_actual_total
+        )
+        selected_utilization = (
+            (selected_actual_total / selected_budget_total) * 100
+            if selected_budget_total > 0
+            else 0
+        )
+
+        # Required Budget / Actual / Variance / Utilization cards.
+        st.subheader(
+            f"{selected_location} — Budget vs Actual ({budget_period_label})"
+        )
+        b1, b2, b3, b4 = st.columns(4, gap="medium")
+        b1.metric("Budget", f"Rs. {selected_budget_total:,.0f}")
+        b2.metric("Actual", f"Rs. {selected_actual_total:,.0f}")
+        b3.metric("Variance", f"Rs. {selected_variance:,.0f}")
+        b4.metric("Utilization", f"{selected_utilization:,.1f}%")
+
+        # Budget vs Actual graph uses the same top selections.
+        plant_category_df = pd.DataFrame(
+            {
+                "Category": TRAINING_CATEGORIES,
+                "Budget": [
+                    float(
+                        selected_budget_df.loc[
+                            selected_budget_df["category"] == cat,
+                            "budget_amount",
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+                "Actual": [
+                    float(
+                        budget_actual_df.loc[
+                            budget_actual_df["category"] == cat,
+                            (
+                                "participant_allocated_cost"
+                                if participant_search.strip()
+                                else "training_cost"
+                            ),
+                        ].sum()
+                    )
+                    for cat in TRAINING_CATEGORIES
+                ],
+            }
+        )
+
+        if selected_category != "All Categories":
+            plant_category_df = plant_category_df[
+                plant_category_df["Category"] == selected_category
+            ].copy()
+
+        plant_category_df["Variance"] = (
+            plant_category_df["Budget"] - plant_category_df["Actual"]
+        )
+        plant_category_df["Utilization %"] = plant_category_df.apply(
+            lambda r: (
+                r["Actual"] / r["Budget"] * 100
+                if r["Budget"] > 0
+                else 0
+            ),
+            axis=1,
+        )
+
+        st.subheader("Budget vs Actual by Category")
+        chart_df = plant_category_df.set_index("Category")[
+            ["Budget", "Actual"]
+        ]
+        st.bar_chart(
+            chart_df,
+            use_container_width=True,
+        )
+
+        # A second live graph makes variance/utilization visible without
+        # introducing another filter in the middle of the Dashboard.
+        g1, g2 = st.columns(2)
+        with g1:
+            st.subheader("Variance by Category")
+            variance_chart = plant_category_df.set_index("Category")[
+                ["Variance"]
+            ]
+            st.bar_chart(
+                variance_chart,
+                use_container_width=True,
+            )
+
+        with g2:
+            st.subheader("Utilization by Category")
+            utilization_chart = plant_category_df.set_index("Category")[
+                ["Utilization %"]
+            ]
+            st.bar_chart(
+                utilization_chart,
+                use_container_width=True,
+            )
+
+        # Keep the detailed category values available, but do not add
+        # another selector/table that competes with the top filters.
+        st.dataframe(
+            plant_category_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Budget": st.column_config.NumberColumn(
+                    "Budget (Rs.)", format="Rs. %d"
+                ),
+                "Actual": st.column_config.NumberColumn(
+                    "Actual (Rs.)", format="Rs. %d"
+                ),
+                "Variance": st.column_config.NumberColumn(
+                    "Variance (Rs.)", format="Rs. %d"
+                ),
+                "Utilization %": st.column_config.NumberColumn(
+                    "Utilization %", format="%.1f%%"
+                ),
+            },
+        )
+
+        # Download remains available without displaying the old
+        # Training Records table on the Dashboard.
+        if not filtered.empty:
+            display = filtered.copy()
+            display["from_date"] = display["from_date"].dt.strftime(
+                "%Y-%m-%d"
+            )
+            display["to_date"] = display["to_date"].dt.strftime(
+                "%Y-%m-%d"
+            )
+            display["Total Training Hours"] = display[
+                "calculated_total_hours"
+            ]
+            display = display[
+                [
+                    "programme_name",
+                    "from_date",
+                    "to_date",
+                    "quarter",
+                    "training_type",
+                    "category",
+                    "trainer_name",
+                    "power_plant",
+                    "training_hours",
+                    "participants_count",
+                    "Total Training Hours",
+                    "training_cost",
+                ]
+            ]
+            display.columns = [
+                "Programme",
+                "From Date",
+                "To Date",
+                "Quarter",
+                "Type",
+                "Category",
+                "Trainer",
+                "Plant Site",
+                "Hours / Worker",
+                "Workers",
+                "Total Training Hours",
+                "Training Cost (Rs.)",
+            ]
+            st.download_button(
+                "Download Dashboard Data (CSV)",
+                display.to_csv(index=False).encode("utf-8"),
+                "training_dashboard.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+
+# ============================================================
+# RECORDS
+# ============================================================
+
+def render_records():
+    user = require_user()
+
+    st.title("Training Records")
+
+    df = get_training_records()
+
+    if df.empty:
+        st.info("No training records available.")
+        return
+
+    search = st.text_input(
+        "Search programme, trainer, plant site, category or type",
+        placeholder="Search...",
+    )
+
+    filtered = df.copy()
+    # ------------------------------------------------------------
+    # EXCEL-STYLE COLUMN FILTERS
+    # ------------------------------------------------------------
+    # Added only to the Training Records page. The existing search,
+    # table, download and edit/delete functionality below is unchanged.
+    with st.expander("🔎 Filter each column", expanded=False):
+        def _filter_options(column, formatter=None):
+            values = df[column].dropna()
+            if formatter is not None:
+                values = values.map(formatter)
+            values = values.astype(str).str.strip()
+            values = values[values != ""].drop_duplicates().sort_values()
+            return ["All"] + values.tolist()
+
+        f1, f2, f3 = st.columns(3)
+
+        with f1:
+            programme_filter = st.selectbox(
+                "Programme",
+                _filter_options("programme_name"),
+                key="records_filter_programme",
+            )
+
+        with f2:
+            from_date_filter = st.selectbox(
+                "From Date",
+                _filter_options(
+                    "from_date",
+                    lambda x: pd.to_datetime(x).strftime("%Y-%m-%d"),
+                ),
+                key="records_filter_from_date",
+            )
+
+        with f3:
+            to_date_filter = st.selectbox(
+                "To Date",
+                _filter_options(
+                    "to_date",
+                    lambda x: pd.to_datetime(x).strftime("%Y-%m-%d"),
+                ),
+                key="records_filter_to_date",
+            )
+
+        f4, f5, f6 = st.columns(3)
+
+        with f4:
+            quarter_filter = st.selectbox(
+                "Quarter",
+                _filter_options("quarter"),
+                key="records_filter_quarter",
+            )
+
+        with f5:
+            type_filter = st.selectbox(
+                "Type",
+                _filter_options("training_type"),
+                key="records_filter_type",
+            )
+
+        with f6:
+            plant_filter = st.selectbox(
+                "Plant Site",
+                _filter_options("power_plant"),
+                key="records_filter_plant",
+            )
+
+    # Apply selected column filters.
+    if programme_filter != "All":
+        filtered = filtered[
+            filtered["programme_name"].fillna("").astype(str).str.strip()
+            == programme_filter
+        ]
+
+    if from_date_filter != "All":
+        filtered = filtered[
+            pd.to_datetime(filtered["from_date"]).dt.strftime("%Y-%m-%d")
+            == from_date_filter
+        ]
+
+    if to_date_filter != "All":
+        filtered = filtered[
+            pd.to_datetime(filtered["to_date"]).dt.strftime("%Y-%m-%d")
+            == to_date_filter
+        ]
+
+    if quarter_filter != "All":
+        filtered = filtered[
+            filtered["quarter"].fillna("").astype(str).str.strip()
+            == quarter_filter
+        ]
+
+    if type_filter != "All":
+        filtered = filtered[
+            filtered["training_type"].fillna("").astype(str).str.strip()
+            == type_filter
+        ]
+
+    if plant_filter != "All":
+        filtered = filtered[
+            filtered["power_plant"].fillna("").astype(str).str.strip()
+            == plant_filter
+        ]
+
+    if search.strip():
+        q = search.strip().lower()
+
+        mask = (
+            filtered["programme_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["trainer_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["power_plant"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["training_type"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["category"]
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+            | filtered["participant_names"]
+            .fillna("")
+            .astype(str)
+            .str.lower()
+            .str.contains(q, na=False)
+        )
+
+        filtered = filtered[mask]
+
+    if filtered.empty:
+        st.info("No records match your search.")
+        return
+
+    display = filtered.copy()
+    display["calculated_total_hours"] = (
+        display["training_hours"]
+        * display["participants_count"]
+    )
+    display["from_date"] = (
+        display["from_date"].dt.strftime("%Y-%m-%d")
+    )
+    display["to_date"] = (
+        display["to_date"].dt.strftime("%Y-%m-%d")
+    )
+
+    display = display[
+        [
+            "id",
+            "programme_name",
+            "from_date",
+            "to_date",
+            "quarter",
+            "training_type",
+            "category",
+            "trainer_name",
+            "power_plant",
+            "training_hours",
+            "participants_count",
+            "calculated_total_hours",
+            "training_cost",
+        ]
+    ]
+
+    display.columns = [
+        "ID",
+        "Programme",
+        "From Date",
+        "To Date",
+        "Quarter",
+        "Type",
+        "Category",
+        "Trainer",
+        "Plant Site",
+        "Hours / Worker",
+        "Workers",
+        "Total Training Hours",
+        "Cost (Rs.)",
+    ]
+
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "Download Records as CSV",
+        display.to_csv(index=False).encode("utf-8"),
+        "hr_training_records.csv",
+        "text/csv",
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Edit Record")
+
+    ids = filtered["id"].astype(int).tolist()
+
+    selected_id = st.selectbox(
+        "Select record ID",
+        ids,
+        key="records_selected_id",
+    )
+
+    selected_rows = df[df["id"] == selected_id]
+
+    if selected_rows.empty:
+        st.warning(
+            "The selected record is no longer available."
+        )
+        return
+
+    row = selected_rows.iloc[0]
+
+    with st.expander("Edit selected record"):
+        a, b = st.columns(2)
+
+        with a:
+            programme = st.text_input(
+                "Programme",
+                value=str(
+                    row["programme_name"] or ""
+                ),
+                key=f"ep_{selected_id}",
+            )
+
+            from_default = (
+                row["from_date"].date()
+                if pd.notna(row["from_date"])
+                else date.today()
+            )
+
+            to_default = (
+                row["to_date"].date()
+                if pd.notna(row["to_date"])
+                else from_default
+            )
+
+            from_date = st.date_input(
+                "From Date",
+                value=from_default,
+                key=f"ef_{selected_id}",
+            )
+
+            to_date = st.date_input(
+                "To Date",
+                value=to_default,
+                key=f"et_{selected_id}",
+            )
+
+            quarter_options = [
+                "Q1", "Q2", "Q3", "Q4"
+            ]
+
+            quarter = st.selectbox(
+                "Quarter",
+                quarter_options,
+                index=(
+                    quarter_options.index(
+                        str(row["quarter"])
+                    )
+                    if str(row["quarter"])
+                    in quarter_options
+                    else 0
+                ),
+                key=f"eq_{selected_id}",
+            )
+
+        with b:
+            current_type = str(
+                row["training_type"]
+            )
+
+            training_types = TRAINING_TYPES.copy()
+
+            if (
+                current_type
+                and current_type not in training_types
+            ):
+                training_types.append(current_type)
+
+            training_type = st.selectbox(
+                "Type",
+                training_types,
+                index=(
+                    training_types.index(current_type)
+                    if current_type in training_types
+                    else 0
+                ),
+                key=f"ety_{selected_id}",
+            )
+
+            current_category = str(
+                row["category"]
+                or "Internal (Cooperate Trainings)"
+            )
+
+            categories = TRAINING_CATEGORIES.copy()
+
+            if (
+                current_category
+                and current_category not in categories
+            ):
+                categories.append(current_category)
+
+            category = st.selectbox(
+                "Category",
+                categories,
+                index=(
+                    categories.index(current_category)
+                    if current_category in categories
+                    else 0
+                ),
+                key=f"ecat_{selected_id}",
+            )
+
+            trainer_name = st.text_input(
+                "Trainer's Name",
+                value=str(
+                    row.get("trainer_name", "")
+                    or ""
+                ),
+                key=f"etrainer_{selected_id}",
+            )
+
+            current_plant = str(
+                row["power_plant"]
+                or "Not Specified"
+            ).strip()
+
+            existing_plants = (
+                ["Not Specified"]
+                + get_power_plants()
+            )
+
+            if (
+                current_plant
+                and current_plant not in existing_plants
+            ):
+                existing_plants.append(current_plant)
+
+            power_plant = st.selectbox(
+                "Power Plant",
+                existing_plants,
+                index=(
+                    existing_plants.index(current_plant)
+                    if current_plant in existing_plants
+                    else 0
+                ),
+                key=f"eplant_{selected_id}",
+            )
+
+            training_hours = st.number_input(
+                "Training Hours per Worker",
+                min_value=0.0,
+                value=float(
+                    row["training_hours"]
+                ),
+                step=0.5,
+                key=f"eh_{selected_id}",
+            )
+
+            participants = st.number_input(
+                "Workers Attended",
+                min_value=0,
+                value=int(
+                    round(
+                        float(
+                            row["participants_count"]
+                        )
+                    )
+                ),
+                step=1,
+                format="%d",
+                key=f"epeople_{selected_id}",
+            )
+
+        cost = st.number_input(
+            "Training Cost (Rs.)",
+            min_value=0.0,
+            value=float(row["training_cost"]),
+            step=1000.0,
+            key=f"ecost_{selected_id}",
+        )
+
+        names = st.text_area(
+            "Participant Names",
+            value=str(
+                row["participant_names"]
+                or ""
+            ),
+            key=f"en_{selected_id}",
+        )
+
+        total_hours = (
+            training_hours * participants
+        )
+
+        st.markdown(
+            f"**Total Training Hours = "
+            f"{training_hours:,.2f} × "
+            f"{participants:,.1f} = "
+            f"{total_hours:,.2f}**"
+        )
+
+        b1, b2 = st.columns(2)
+
+        with b1:
+            if st.button(
+                "Save Changes",
+                type="primary",
+                use_container_width=True,
+                key=f"save_{selected_id}",
+            ):
+                if not programme.strip():
+                    st.error(
+                        "Programme name cannot be empty."
+                    )
+                elif not trainer_name.strip():
+                    st.error(
+                        "Trainer's name cannot be empty."
+                    )
+                elif not power_plant.strip():
+                    st.error(
+                        "Please select a power plant."
+                    )
+                elif to_date < from_date:
+                    st.error(
+                        "To Date cannot be earlier than From Date."
+                    )
+                elif (
+                    training_hours <= 0
+                    or participants <= 0
+                ):
+                    st.error(
+                        "Training Hours and Workers Attended "
+                        "must be greater than 0."
+                    )
+                else:
+                    try:
+                        update_training_record(
+                            selected_id,
+                            programme.strip(),
+                            from_date,
+                            to_date,
+                            quarter,
+                            training_type,
+                            category,
+                            power_plant.strip(),
+                            trainer_name.strip(),
+                            names.strip(),
+                            cost,
+                            training_hours,
+                            participants,
+                        )
+
+                        st.success(
+                            "Record updated successfully."
+                        )
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(
+                            "Unable to update record."
+                        )
+                        with st.expander(
+                            "Technical details"
+                        ):
+                            st.exception(e)
+
+        with b2:
+            is_admin = (
+                str(user.get("role", "user"))
+                .strip()
+                .lower()
+                == "admin"
+            )
+
+            if is_admin:
+                if st.button(
+                    "Delete Record",
+                    use_container_width=True,
+                    key=f"delete_{selected_id}",
+                ):
+                    try:
+                        delete_training_record(
+                            selected_id
+                        )
+                        st.success(
+                            "Record deleted successfully."
+                        )
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(
+                            "Unable to delete record."
+                        )
+                        with st.expander(
+                            "Technical details"
+                        ):
+                            st.exception(e)
+            else:
+                st.caption(
+                    "Delete is available to administrators only."
+                )
+
+
+
+# ============================================================
+# BUDGET EXCEL IMPORT HELPERS
+# ============================================================
+
+BUDGET_EXCEL_CATEGORY_MAP = {
+    "external": "External Training",
+    "external training": "External Training",
+    "internal": "Internal (Cooperate Trainings)",
+    "internal training": "Internal (Cooperate Trainings)",
+    "internal (cooperate trainings)": "Internal (Cooperate Trainings)",
+    "internal (corporate trainings)": "Internal (Cooperate Trainings)",
+    "management": "Management Training",
+    "management training": "Management Training",
+    "overseas": "Overseas Training",
+    "overseas training": "Overseas Training",
+    "oversease": "Overseas Training",
+}
+
+
+def _clean_budget_header(value):
+    if value is None or pd.isna(value):
+        return ""
+    text = str(value).strip().lower()
+    text = re.sub(r"[\r\n]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def normalize_budget_category(value):
+    text = _clean_budget_header(value)
+    return BUDGET_EXCEL_CATEGORY_MAP.get(text)
+
+
+def normalize_budget_location(value):
+    """
+    Website plant/site names are authoritative.
+    Excel values are matched case-insensitively and whitespace is ignored,
+    then converted to the exact website spelling.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    lookup = {
+        str(location).strip().casefold(): location
+        for location in BUDGET_LOCATIONS
+    }
+    return lookup.get(text.casefold())
+
+
+def parse_budget_excel(uploaded_file):
+    """
+    Parse the Budget Excel layout.
+
+    Important HOF rule:
+      The supplied Excel workbook has Rs. 2,000,000 in the GRAND TOTAL
+      row under Overseas, while the HOF row itself is blank in the
+      Overseas column. That Rs. 2,000,000 belongs to HOF for database
+      purposes.
+
+    Therefore:
+      - the imported database record is HOF + Overseas Training + Rs. 2,000,000
+      - the Excel-style preview keeps the workbook appearance: HOF's
+        Overseas cell remains blank and the Grand Total row remains
+        Rs. 2,000,000.
+    """
+    file_name = str(getattr(uploaded_file, "name", "")).lower()
+
+    if file_name.endswith(".csv"):
+        raw = pd.read_csv(uploaded_file, header=None)
+    else:
+        raw = pd.read_excel(uploaded_file, header=None)
+
+    if raw.empty:
+        raise ValueError("The uploaded Budget Excel file is empty.")
+
+    category_columns = {}
+    header_row = None
+
+    for row_index in range(len(raw)):
+        row_values = raw.iloc[row_index].tolist()
+
+        found = {}
+        for col_index, value in enumerate(row_values):
+            category = normalize_budget_category(value)
+            if category and category not in found.values():
+                found[col_index] = category
+
+        if len(found) >= 2:
+            header_row = row_index
+            category_columns = found
+            break
+
+    if header_row is None:
+        raise ValueError(
+            "Could not find the budget category header row. "
+            "Expected columns such as External, Internal (Cooperate Trainings), "
+            "Management and Overseas."
+        )
+
+    first_category_col = min(category_columns.keys())
+
+    if first_category_col <= 0:
+        raise ValueError(
+            "Could not identify the Plant/Site column in the Budget Excel file."
+        )
+
+    location_col = first_category_col - 1
+
+    records = []
+    unmatched_sites = []
+    ignored_rows = []
+
+    # Store the workbook's Grand Total values separately so that the
+    # Excel-style preview can remain visually faithful to the source.
+    excel_grand_totals = {}
+
+    for row_index in range(header_row + 1, len(raw)):
+        row = raw.iloc[row_index]
+
+        location_raw = row.iloc[location_col] if location_col < len(row) else None
+        location_text = str(location_raw or "").strip()
+
+        if not location_text:
+            continue
+
+        if location_text.casefold() in {"total", "grand total", "subtotal"}:
+            # Capture the workbook Grand Total row, but do not import it
+            # as a separate location.
+            for col_index, category in sorted(category_columns.items()):
+                value = row.iloc[col_index] if col_index < len(row) else None
+
+                if value is None or pd.isna(value) or str(value).strip() == "":
+                    continue
+
+                amount = parse_number(value, default=0.0)
+
+                if amount < 0:
+                    raise ValueError(
+                        f"Negative grand total found for {category}."
+                    )
+
+                excel_grand_totals[category] = float(amount)
+            break
+
+        location = normalize_budget_location(location_text)
+
+        if location is None:
+            unmatched_sites.append(location_text)
+            continue
+
+        for col_index, category in sorted(category_columns.items()):
+            value = row.iloc[col_index] if col_index < len(row) else None
+
+            if value is None or pd.isna(value) or str(value).strip() == "":
+                continue
+
+            amount = parse_number(value, default=0.0)
+
+            if amount < 0:
+                raise ValueError(
+                    f"Negative budget amount found for {location} - {category}."
+                )
+
+            if amount == 0:
+                continue
+
+            records.append(
+                {
+                    "location": location,
+                    "category": category,
+                    "budget_amount": float(amount),
+                }
+            )
+
+    budget_df = pd.DataFrame(
+        records,
+        columns=[
+            "location",
+            "category",
+            "budget_amount",
+        ],
+    )
+
+    if budget_df.empty and unmatched_sites:
+        raise ValueError(
+            "No valid budget rows were found. Unmatched plant/site names: "
+            + ", ".join(sorted(set(unmatched_sites)))
+        )
+
+    # ------------------------------------------------------------
+    # SPECIAL CASE FROM THE PROVIDED EXCEL:
+    # Overseas Grand Total = Rs. 2,000,000, while HOF has no
+    # row-level Overseas value. The amount belongs to HOF.
+    #
+    # Only apply this when:
+    #   1. a Grand Total Overseas value exists,
+    #   2. HOF is a configured website location, and
+    #   3. there is no row-level Overseas value already imported.
+    # ------------------------------------------------------------
+    overseas_category = "Overseas Training"
+    excel_overseas_total = float(
+        excel_grand_totals.get(overseas_category, 0.0)
+    )
+
+    row_level_overseas = 0.0
+    if not budget_df.empty:
+        overseas_rows = budget_df[
+            budget_df["category"] == overseas_category
+        ]
+        if not overseas_rows.empty:
+            row_level_overseas = float(
+                overseas_rows["budget_amount"].sum()
+            )
+
+    hof_location = normalize_budget_location("HOF")
+
+    if (
+        excel_overseas_total > 0
+        and hof_location
+        and row_level_overseas == 0
+    ):
+        records.append(
+            {
+                "location": hof_location,
+                "category": overseas_category,
+                "budget_amount": excel_overseas_total,
+            }
+        )
+
+        budget_df = pd.DataFrame(
+            records,
+            columns=[
+                "location",
+                "category",
+                "budget_amount",
+            ],
+        )
+
+    # If the same Site + Category appears more than once, add the amounts.
+    if not budget_df.empty:
+        budget_df = (
+            budget_df.groupby(
+                ["location", "category"],
+                as_index=False,
+                sort=False,
+            )
+            .agg(
+                budget_amount=("budget_amount", "sum"),
+            )
+        )
+
+    # Keep the original workbook total information available to the
+    # Excel-style preview without changing what is imported.
+    budget_df.attrs["excel_grand_totals"] = excel_grand_totals
+    budget_df.attrs["excel_overseas_total_only"] = (
+        excel_overseas_total > 0
+        and hof_location is not None
+        and row_level_overseas == 0
+    )
+
+    return budget_df, sorted(set(unmatched_sites)), header_row + 1
+
+
+def import_budget_dataframe(budget_df, budget_year, created_by):
+    """
+    Save imported budgets using the same safe upsert logic as manual entry.
+    """
+    saved = 0
+
+    for _, row in budget_df.iterrows():
+        save_budget_record(
+            None,
+            int(budget_year),
+            row["location"],
+            row["category"],
+            float(row["budget_amount"]),
+            created_by,
+        )
+        saved += 1
+
+    return saved
+
+
+# ============================================================
+# BUDGET ENTRY
+# ============================================================
+
+def render_budget_entry():
+    # Budget Entry is available to every authenticated user.
+    user = require_user()
+
+    st.title("Training Budget Entry")
+    st.caption(
+        "Enter and manage separate annual budgets for each plant site and training category. "
+        "This section is available to all logged-in users."
+    )
+
+    st.info(
+        "Budget Entry is available for all configured locations. "
+        "Training Cost is the actual amount used for Budget vs Actual comparison."
+    )
+
+    st.markdown(
+        """
+        <div class="formula-box">
+            <div class="formula-title">
+                Budget Structure
+            </div>
+            <div class="formula-text">
+                Budget = Year + Plant Site + Category + Budget Amount
+            </div>
+            <div class="small-note">
+                Categories:
+                Internal (Cooperate Trainings) · External Training ·
+                External Trainings (Foreign) · Overseas Training ·
+                Management Training
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ========================================================
+    # BUDGET EXCEL IMPORT
+    # ========================================================
+    with st.container(border=True):
+        st.subheader("📥 Import Budget Excel")
+        st.caption(
+            "Upload the prepared budget workbook. Website plant/site names "
+            "are used as the master names. Existing Year + Plant Site + Category "
+            "records are updated instead of duplicated."
+        )
+
+        import_year = st.number_input(
+            "Budget Year for this Excel *",
+            min_value=2020,
+            max_value=2100,
+            value=date.today().year,
+            step=1,
+            format="%d",
+            key="budget_excel_year",
+        )
+
+        uploaded_budget = st.file_uploader(
+            "Choose Budget Excel file",
+            type=["xlsx", "xls", "csv"],
+            key="budget_excel_upload",
+            help=(
+                "The workbook should contain the plant/site names and "
+                "the External, External Trainings (Foreign), Internal "
+                "(Cooperate Trainings), Management and Overseas budget columns."
+            ),
+        )
+
+        if uploaded_budget is not None:
+            try:
+                preview_df, unmatched_sites, _ = parse_budget_excel(
+                    uploaded_budget
+                )
+
+                if unmatched_sites:
+                    st.warning(
+                        "These plant/site names are not in the website's "
+                        "configured plant list and were not imported: "
+                        + ", ".join(unmatched_sites)
+                    )
+
+                if preview_df.empty:
+                    st.error("No valid budget amounts were found in the file.")
+                else:
+                    # ------------------------------------------------
+                    # Excel-style preview
+                    # Show one row per Plant / Site and one separate
+                    # column for each budget category, matching the
+                    # structure of the uploaded workbook.
+                    # ------------------------------------------------
+                    preview_categories = [
+                        "External Training",
+                        "External Trainings (Foreign)",
+                        "Internal (Cooperate Trainings)",
+                        "Management Training",
+                        "Overseas Training",
+                    ]
+
+                    preview_display = (
+                        preview_df.pivot_table(
+                            index="location",
+                            columns="category",
+                            values="budget_amount",
+                            aggfunc="sum",
+                            fill_value=0,
+                        )
+                        .reindex(columns=preview_categories, fill_value=0)
+                        .reset_index()
+                    )
+
+                    # ------------------------------------------------
+                    # Preserve the Excel screenshot appearance.
+                    #
+                    # In the source workbook, HOF's Overseas cell is
+                    # blank, while Rs. 2,000,000 appears only in the
+                    # Grand Total row. The database still receives that
+                    # amount against HOF + Overseas Training.
+                    # ------------------------------------------------
+                    excel_grand_totals = preview_df.attrs.get(
+                        "excel_grand_totals", {}
+                    )
+                    overseas_total_only = preview_df.attrs.get(
+                        "excel_overseas_total_only", False
+                    )
+
+                    if overseas_total_only:
+                        hof_mask = (
+                            preview_display["location"].astype(str).str.strip().str.casefold()
+                            == "hof"
+                        )
+
+                        if hof_mask.any():
+                            # Keep HOF Overseas blank/zero in the display,
+                            # exactly as shown in the Excel source.
+                            preview_display.loc[
+                                hof_mask, "Overseas Training"
+                            ] = 0.0
+
+                    # Add a row total for every Plant / Site.
+                    preview_display["Total"] = preview_display[
+                        preview_categories
+                    ].sum(axis=1)
+
+                    preview_display = preview_display.rename(
+                        columns={"location": "Plant / Site"}
+                    )
+
+                    preview_display = preview_display[
+                        [
+                            "Plant / Site",
+                            "External Training",
+                            "Internal (Cooperate Trainings)",
+                            "Management Training",
+                            "Overseas Training",
+                            "Total",
+                        ]
+                    ]
+
+                    # Keep the Grand Total exactly as represented by the
+                    # uploaded Excel workbook where possible.
+                    grand_total = {"Plant / Site": "Total"}
+
+                    for column in preview_display.columns[1:]:
+                        category_for_total = column
+
+                        if category_for_total == "Total":
+                            # Workbook Total is the sum of the displayed
+                            # category totals, including the separate
+                            # Overseas grand total.
+                            category_total = float(
+                                preview_display[
+                                    [
+                                        "External Training",
+                                        "Internal (Cooperate Trainings)",
+                                        "Management Training",
+                                    ]
+                                ].sum().sum()
+                            )
+
+                            if overseas_total_only:
+                                category_total += float(
+                                    excel_grand_totals.get(
+                                        "Overseas Training", 0.0
+                                    )
+                                )
+                            else:
+                                category_total += float(
+                                    preview_display["Overseas Training"].sum()
+                                )
+
+                            grand_total[column] = category_total
+                        elif (
+                            category_for_total == "Overseas Training"
+                            and overseas_total_only
+                        ):
+                            grand_total[column] = float(
+                                excel_grand_totals.get(
+                                    "Overseas Training", 0.0
+                                )
+                            )
+                        else:
+                            grand_total[column] = float(
+                                preview_display[category_for_total].sum()
+                            )
+
+                    preview_display = pd.concat(
+                        [
+                            preview_display,
+                            pd.DataFrame([grand_total]),
+                        ],
+                        ignore_index=True,
+                    )
+
+                    st.write("**Preview of budgets to be imported:**")
+                    st.dataframe(
+                        preview_display,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Plant / Site": st.column_config.TextColumn(
+                                "Plant / Site",
+                                width="medium",
+                            ),
+                            "External Training": st.column_config.NumberColumn(
+                                "External Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Internal (Cooperate Trainings)": st.column_config.NumberColumn(
+                                "Internal (Cooperate Trainings)",
+                                format="Rs. %d",
+                                width="large",
+                            ),
+                            "Management Training": st.column_config.NumberColumn(
+                                "Management Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Overseas Training": st.column_config.NumberColumn(
+                                "Overseas Training",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                            "Total": st.column_config.NumberColumn(
+                                "Total",
+                                format="Rs. %d",
+                                width="medium",
+                            ),
+                        },
+                    )
+
+                    # Use the normalized records for the actual import total.
+                    total_import = float(
+                        preview_df["budget_amount"].sum()
+                    )
+                    st.metric(
+                        "Total Budget in Preview",
+                        f"Rs. {total_import:,.2f}",
+                    )
+
+                    if st.button(
+                        "Import Budget to Database",
+                        type="primary",
+                        use_container_width=True,
+                        key="import_budget_excel_button",
+                    ):
+                        try:
+                            saved_count = import_budget_dataframe(
+                                preview_df,
+                                int(import_year),
+                                user.get("id"),
+                            )
+
+                            st.success(
+                                f"{saved_count} budget entries imported "
+                                f"successfully for {int(import_year)}. "
+                                "Existing matching entries were updated."
+                            )
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(
+                                "Unable to import the budget Excel file."
+                            )
+                            with st.expander("Technical details"):
+                                st.exception(e)
+
+            except Exception as e:
+                st.error(
+                    "Unable to read the Budget Excel file. "
+                    "Please check the workbook format."
+                )
+                with st.expander("Technical details"):
+                    st.exception(e)
+
+    st.divider()
+
+    # Budget Entry supports all configured company plant sites.
+    # BUDGET_LOCATIONS is based on KNOWN_LOCATIONS and therefore includes
+    # HOF, BBO, BTO, BKN, EME, MGT, GNT, HS1, HS2, LKM, MVB, ORK,
+    # RDP, UDW, VBL and WMB.
+    budget_df = get_budget_records()
+    locations = BUDGET_LOCATIONS.copy()
+
+    with st.container(border=True):
+        st.subheader("Enter / Update Budget")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            budget_year = st.number_input(
+                "Budget Year *",
+                min_value=2020,
+                max_value=2100,
+                value=date.today().year,
+                step=1,
+                format="%d",
+                key="budget_year_entry",
+            )
+
+            budget_location = st.selectbox(
+                "Plant Site *",
+                locations,
+                key="budget_location_entry",
+            )
+
+        with c2:
+            budget_category = st.selectbox(
+                "Category *",
+                TRAINING_CATEGORIES,
+                key="budget_category_entry",
+            )
+
+            budget_amount = st.number_input(
+                "Budget Amount (Rs.) *",
+                min_value=0.0,
+                step=10000.0,
+                format="%.2f",
+                key="budget_amount_entry",
+            )
+
+        if st.button(
+            "Save Budget",
+            type="primary",
+            use_container_width=True,
+        ):
+            if not budget_location.strip():
+                st.error(
+                    "Please select a plant site."
+                )
+            elif budget_amount < 0:
+                st.error(
+                    "Budget amount cannot be negative."
+                )
+            else:
+                try:
+                    save_budget_record(
+                        None,
+                        budget_year,
+                        budget_location,
+                        budget_category,
+                        budget_amount,
+                        user.get("id"),
+                    )
+
+                    st.success(
+                        "Budget saved successfully. "
+                        "If the same Year + Location + Category "
+                        "already existed, it was updated."
+                    )
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(
+                        "Unable to save the budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+    st.divider()
+    st.subheader("Existing Budgets")
+
+    budget_df = get_budget_records()
+
+    if budget_df.empty:
+        st.info("No budget records have been entered yet.")
+        return
+
+    budget_display = budget_df.copy()
+
+    budget_display["Budget Amount (Rs.)"] = (
+        budget_display["budget_amount"]
+    )
+
+    budget_display = budget_display[
+        [
+            "id",
+            "budget_year",
+            "location",
+            "category",
+            "Budget Amount (Rs.)",
+        ]
+    ]
+
+    budget_display.columns = [
+        "ID",
+        "Year",
+        "Plant Site",
+        "Category",
+        "Budget Amount (Rs.)",
+    ]
+
+    st.dataframe(
+        budget_display,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.download_button(
+        "Download Budgets as CSV",
+        budget_display.to_csv(
+            index=False
+        ).encode("utf-8"),
+        "training_budgets.csv",
+        "text/csv",
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Edit / Delete Budget")
+
+    budget_ids = (
+        budget_df["id"]
+        .astype(int)
+        .tolist()
+    )
+
+    selected_budget_id = st.selectbox(
+        "Select Budget ID",
+        budget_ids,
+        key="selected_budget_id",
+    )
+
+    budget_rows = budget_df[
+        budget_df["id"] == selected_budget_id
+    ]
+
+    if budget_rows.empty:
+        return
+
+    budget_row = budget_rows.iloc[0]
+
+    with st.expander("Edit selected budget"):
+        ec1, ec2 = st.columns(2)
+
+        with ec1:
+            edit_year = st.number_input(
+                "Year",
+                min_value=2020,
+                max_value=2100,
+                value=int(
+                    budget_row["budget_year"]
+                ),
+                step=1,
+                format="%d",
+                key=f"edit_budget_year_{selected_budget_id}",
+            )
+
+            # Budget editing supports all configured company plant sites.
+            edit_locations = BUDGET_LOCATIONS.copy()
+
+            current_location = str(
+                budget_row["location"]
+            ).strip()
+
+            edit_location = st.selectbox(
+                "Plant Site",
+                edit_locations,
+                index=(
+                    edit_locations.index(
+                        current_location
+                    )
+                    if current_location
+                    in edit_locations
+                    else 0
+                ),
+                key=f"edit_budget_location_{selected_budget_id}",
+            )
+
+        with ec2:
+            current_category = str(
+                budget_row["category"]
+            )
+
+            edit_category = st.selectbox(
+                "Category",
+                TRAINING_CATEGORIES,
+                index=(
+                    TRAINING_CATEGORIES.index(
+                        current_category
+                    )
+                    if current_category
+                    in TRAINING_CATEGORIES
+                    else 0
+                ),
+                key=f"edit_budget_category_{selected_budget_id}",
+            )
+
+            edit_amount = st.number_input(
+                "Budget Amount (Rs.)",
+                min_value=0.0,
+                value=float(
+                    budget_row["budget_amount"]
+                ),
+                step=10000.0,
+                format="%.2f",
+                key=f"edit_budget_amount_{selected_budget_id}",
+            )
+
+        ec_save, ec_delete = st.columns(2)
+
+        with ec_save:
+            if st.button(
+                "Save Budget Changes",
+                type="primary",
+                use_container_width=True,
+                key=f"save_budget_{selected_budget_id}",
+            ):
+                try:
+                    save_budget_record(
+                        int(selected_budget_id),
+                        edit_year,
+                        edit_location,
+                        edit_category,
+                        edit_amount,
+                        user.get("id"),
+                    )
+                    st.success(
+                        "Budget updated successfully."
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "Unable to update budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+        with ec_delete:
+            if st.button(
+                "Delete Budget",
+                use_container_width=True,
+                key=f"delete_budget_{selected_budget_id}",
+            ):
+                try:
+                    delete_budget_record(
+                        selected_budget_id
+                    )
+                    st.success(
+                        "Budget deleted successfully."
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error(
+                        "Unable to delete budget."
+                    )
+                    with st.expander(
+                        "Technical details"
+                    ):
+                        st.exception(e)
+
+
+# ============================================================
+# ACCOUNT
 # ============================================================
 
 def render_account():

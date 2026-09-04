@@ -349,27 +349,24 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page staff image — use the available right-side area with no top/bottom gaps */
+/* Login-page staff image — fill the entire main area */
 .login-staff-image {
     display:block !important;
     position:relative !important;
     left:auto !important;
-    transform:translateX(-1rem) !important;
-    width:calc(100% + 2rem) !important;
+    transform:translateX(-85px) !important;
+    width:calc(100% + 170px) !important;
     max-width:none !important;
-    margin:-1.25rem 0 -3rem 0 !important;
+    margin:80px 0 0 0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
-    overflow:hidden !important;
+    overflow:visible !important;
 }
 .login-staff-image img {
     display:block !important;
     width:100% !important;
     max-width:none !important;
-    height:100vh !important;
-    min-height:560px !important;
-    object-fit:cover !important;
-    object-position:center center !important;
+    height:auto !important;
     margin:0 !important;
     padding:0 !important;
     border-radius:14px !important;

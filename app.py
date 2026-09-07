@@ -980,6 +980,228 @@ def ensure_training_schema():
     )
 
 
+# ============================================================
+# WORKER MASTER
+# ============================================================
+
+def ensure_worker_master_schema():
+    """Create the site-to-worker master without changing existing training data."""
+    run_write(
+        """
+        CREATE TABLE IF NOT EXISTS public.worker_master (
+            id BIGSERIAL PRIMARY KEY,
+            employee_no VARCHAR(100),
+            worker_name TEXT NOT NULL,
+            power_plant VARCHAR(255) NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_by BIGINT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_worker_master_power_plant
+            ON public.worker_master(power_plant);
+
+        CREATE INDEX IF NOT EXISTS idx_worker_master_active
+            ON public.worker_master(active);
+        """
+    )
+
+
+def get_worker_master(site=None, active_only=True):
+    conditions = []
+    params = {}
+    if active_only:
+        conditions.append("active = TRUE")
+    if site and str(site).strip():
+        conditions.append("LOWER(TRIM(power_plant)) = LOWER(TRIM(:site))")
+        params["site"] = str(site).strip()
+
+    where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = run_query(
+        f"""
+        SELECT id, employee_no, worker_name, power_plant, active, created_by, created_at, updated_at
+        FROM public.worker_master
+        {where_sql}
+        ORDER BY LOWER(TRIM(worker_name)), id
+        """,
+        params,
+    )
+    return pd.DataFrame([dict(r) for r in rows])
+
+
+def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=True, created_by=None):
+    worker_name = str(worker_name).strip()
+    power_plant = str(power_plant).strip()
+    employee_no = str(employee_no or "").strip()
+    if not worker_name:
+        raise ValueError("Worker name is required.")
+    if not power_plant:
+        raise ValueError("Power Plant / Site is required.")
+
+    params = {
+        "employee_no": employee_no or None,
+        "worker_name": worker_name,
+        "power_plant": power_plant,
+        "active": bool(active),
+        "created_by": _budget_created_by_bigint(created_by),
+    }
+
+    if worker_id:
+        run_write(
+            """
+            UPDATE public.worker_master
+            SET employee_no = :employee_no,
+                worker_name = :worker_name,
+                power_plant = :power_plant,
+                active = :active,
+                updated_at = NOW()
+            WHERE id = :worker_id
+            """,
+            {**params, "worker_id": int(worker_id)},
+        )
+        return
+
+    existing = run_query(
+        """
+        SELECT id
+        FROM public.worker_master
+        WHERE LOWER(TRIM(worker_name)) = LOWER(TRIM(:worker_name))
+          AND LOWER(TRIM(power_plant)) = LOWER(TRIM(:power_plant))
+        ORDER BY id
+        LIMIT 1
+        """,
+        params,
+    )
+    if existing:
+        save_worker_master(
+            int(dict(existing[0])["id"]),
+            employee_no,
+            worker_name,
+            power_plant,
+            active,
+            created_by,
+        )
+        return
+
+    run_write(
+        """
+        INSERT INTO public.worker_master
+            (employee_no, worker_name, power_plant, active, created_by)
+        VALUES
+            (:employee_no, :worker_name, :power_plant, :active, :created_by)
+        """,
+        params,
+    )
+
+
+def delete_worker_master(worker_id):
+    run_write(
+        "DELETE FROM public.worker_master WHERE id = :worker_id",
+        {"worker_id": int(worker_id)},
+    )
+
+
+def import_worker_master_dataframe(worker_df, created_by=None):
+    saved = 0
+    for _, row in worker_df.iterrows():
+        save_worker_master(
+            None,
+            row.get("employee_no", ""),
+            row.get("worker_name", ""),
+            row.get("power_plant", ""),
+            bool(row.get("active", True)),
+            created_by,
+        )
+        saved += 1
+    return saved
+
+
+def prepare_worker_master_excel(uploaded_file):
+    if uploaded_file.name.lower().endswith(".csv"):
+        raw = pd.read_csv(uploaded_file, header=None)
+    else:
+        raw = pd.read_excel(uploaded_file, header=None)
+
+    if raw.empty:
+        raise ValueError("The Worker Master Excel file is empty.")
+
+    aliases = {
+        "employee_no": [
+            "employee no", "employee number", "employee id", "emp no",
+            "emp number", "emp id", "employee_no", "employee_id"
+        ],
+        "worker_name": [
+            "worker name", "worker", "employee name", "name",
+            "employee", "worker_name", "employee_name"
+        ],
+        "power_plant": [
+            "power plant", "plant", "plant name", "site", "location",
+            "power_plant", "site name", "power plant / site"
+        ],
+        "active": ["active", "status", "is active", "active status"],
+    }
+
+    def _norm(value):
+        text = str(value or "").strip().lower()
+        text = re.sub(r"[\r\n]+", " ", text)
+        text = re.sub(r"[\s_/\-]+", " ", text)
+        return text
+
+    header_row = None
+    header_map = {}
+    for i in range(min(30, len(raw))):
+        vals = [_norm(v) for v in raw.iloc[i].tolist()]
+        found = {}
+        for col_idx, value in enumerate(vals):
+            for target, target_aliases in aliases.items():
+                if value in [_norm(x) for x in target_aliases]:
+                    found[target] = col_idx
+                    break
+        if "worker_name" in found and "power_plant" in found:
+            header_row = i
+            header_map = found
+            break
+
+    if header_row is None:
+        raise ValueError(
+            "Could not find Worker Name and Power Plant / Site columns. "
+            "Expected columns such as Worker Name, Employee No and Power Plant / Site."
+        )
+
+    records = []
+    for row_idx in range(header_row + 1, len(raw)):
+        row = raw.iloc[row_idx]
+        worker_name = str(row.iloc[header_map["worker_name"]] if header_map["worker_name"] < len(row) else "").strip()
+        power_plant = str(row.iloc[header_map["power_plant"]] if header_map["power_plant"] < len(row) else "").strip()
+        if not worker_name or worker_name.lower() in {"total", "grand total"}:
+            continue
+        if not power_plant:
+            continue
+
+        employee_no = ""
+        if "employee_no" in header_map:
+            value = row.iloc[header_map["employee_no"]] if header_map["employee_no"] < len(row) else ""
+            employee_no = "" if pd.isna(value) else str(value).strip()
+
+        active = True
+        if "active" in header_map:
+            value = row.iloc[header_map["active"]] if header_map["active"] < len(row) else ""
+            text = str(value or "").strip().lower()
+            if text in {"false", "no", "n", "inactive", "0", "disabled"}:
+                active = False
+
+        site = normalize_budget_location(power_plant) or power_plant
+        records.append({
+            "employee_no": employee_no,
+            "worker_name": worker_name,
+            "power_plant": site,
+            "active": active,
+        })
+
+    return pd.DataFrame(records), header_row + 1
+
+
 # ----------------------------------------------------------------
 # DATABASE STARTUP COMPATIBILITY
 # ----------------------------------------------------------------
@@ -1021,6 +1243,7 @@ except Exception:
 try:
     init_db()
     ensure_training_schema()
+    ensure_worker_master_schema()
 except Exception as e:
     st.error("Unable to connect to the HR database. Please check your Streamlit Secrets.")
     with st.expander("Technical details"):
@@ -1068,6 +1291,7 @@ PAGES = [
     "Import Excel",
     "Records",
     "Budget Entry",
+    "Worker Master",
     "My Account",
 ]
 
@@ -2159,6 +2383,7 @@ def render_sidebar():
             "Import Excel": "📥",
             "Records": "📁",
             "Budget Entry": "💰",
+            "Worker Master": "👷",
             "My Account": "👤",
         }
 
@@ -2567,24 +2792,55 @@ def render_data_entry():
                 format="%.2f",
             )
 
-            participants = st.number_input(
-                "No. of Workers Attended *",
-                min_value=0,
-                step=1,
-                format="%d",
-            )
+            site_workers = get_worker_master(power_plant, active_only=True) if power_plant != "Not Specified" else pd.DataFrame()
+            if not site_workers.empty:
+                worker_labels = site_workers.apply(
+                    lambda r: f"{str(r['worker_name']).strip()}"
+                    + (f" ({str(r['employee_no']).strip()})" if str(r.get('employee_no') or '').strip() else ""),
+                    axis=1,
+                ).tolist()
+                selected_workers = st.multiselect(
+                    "Workers from Worker Master *",
+                    worker_labels,
+                    key="entry_master_workers",
+                    help="Only active workers assigned to the selected Power Plant / Site are shown here.",
+                )
+                selected_names = []
+                for label in selected_workers:
+                    selected_names.append(label.split(" (", 1)[0].strip())
+                participant_names = ", ".join(selected_names)
+                participants = len(selected_workers)
+                st.info(
+                    f"{participants:,} worker(s) selected from the {power_plant} Worker Master."
+                )
+            else:
+                participants = st.number_input(
+                    "No. of Workers Attended *",
+                    min_value=0,
+                    step=1,
+                    format="%d",
+                )
 
-            cost = st.number_input(
+        cost = st.number_input(
                 "Training Cost (Rs.)",
                 min_value=0.0,
                 step=1000.0,
                 format="%.2f",
             )
 
-        participant_names = st.text_area(
-            "Names of the Participants",
-            placeholder="Optional — separate names with commas",
-        )
+        if site_workers.empty:
+            participant_names = st.text_area(
+                "Names of the Participants",
+                placeholder="Optional — separate names with commas",
+            )
+        else:
+            st.text_area(
+                "Names of the Participants",
+                value=participant_names,
+                disabled=True,
+                key="entry_master_participant_names",
+                help="Names are filled automatically from the selected Worker Master records.",
+            )
 
         total_hours = (
             float(training_hours) * float(participants)
@@ -4517,6 +4773,184 @@ def render_records():
 
 
 # ============================================================
+# WORKER MASTER PAGE
+# ============================================================
+
+def render_worker_master():
+    user = require_admin()
+
+    st.title("Worker Master")
+    st.caption(
+        "Maintain one master list of workers and assign each worker to a Power Plant / Site. "
+        "When entering training data, only workers assigned to the selected site are shown."
+    )
+
+    with st.container(border=True):
+        st.subheader("📥 Import Worker Master")
+        st.caption(
+            "Excel columns: Worker Name * , Power Plant / Site * , Employee No (optional), Active (optional)."
+        )
+        uploaded_workers = st.file_uploader(
+            "Choose Worker Master Excel file",
+            type=["xlsx", "xls", "csv"],
+            key="worker_master_upload",
+        )
+        if uploaded_workers is not None:
+            try:
+                worker_preview, worker_header = prepare_worker_master_excel(uploaded_workers)
+                st.success(
+                    f"File loaded successfully — {len(worker_preview):,} workers detected. "
+                    f"Header row: {worker_header}."
+                )
+                if not worker_preview.empty:
+                    st.dataframe(worker_preview, use_container_width=True, hide_index=True)
+                    if st.button(
+                        "Import / Update Worker Master",
+                        type="primary",
+                        use_container_width=True,
+                        key="import_worker_master_button",
+                    ):
+                        try:
+                            saved = import_worker_master_dataframe(
+                                worker_preview, (user or {}).get("id")
+                            )
+                            st.success(f"Worker Master updated successfully — {saved:,} rows processed.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error("Unable to import the Worker Master.")
+                            with st.expander("Technical details"):
+                                st.exception(e)
+            except Exception as e:
+                st.error(str(e))
+
+    with st.container(border=True):
+        st.subheader("➕ Add Worker")
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            employee_no = st.text_input("Employee No", key="wm_employee_no")
+        with c2:
+            worker_name = st.text_input("Worker Name *", key="wm_worker_name")
+        with c3:
+            worker_site = st.selectbox(
+                "Power Plant / Site *",
+                KNOWN_POWER_PLANTS + ["+ Add new site"],
+                key="wm_site",
+            )
+        if worker_site == "+ Add new site":
+            worker_site = st.text_input("New Power Plant / Site *", key="wm_new_site")
+        active = st.checkbox("Active worker", value=True, key="wm_active")
+
+        if st.button("Add / Update Worker", type="primary", use_container_width=True, key="wm_save"):
+            try:
+                save_worker_master(
+                    None, employee_no, worker_name, worker_site, active, (user or {}).get("id")
+                )
+                st.success("Worker Master updated successfully.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    worker_df = get_worker_master(active_only=False)
+    st.subheader("Worker Master List")
+    if worker_df.empty:
+        st.info("No workers have been added yet. Import your Worker Master Excel file above.")
+        return
+
+    site_filter = st.selectbox(
+        "Filter by Power Plant / Site",
+        ["All Sites"] + sorted(worker_df["power_plant"].astype(str).str.strip().unique().tolist()),
+        key="wm_filter_site",
+    )
+    display_df = worker_df.copy()
+    if site_filter != "All Sites":
+        display_df = display_df[
+            display_df["power_plant"].astype(str).str.strip() == site_filter
+        ].copy()
+
+    st.dataframe(
+        display_df[["employee_no", "worker_name", "power_plant", "active"]].rename(
+            columns={
+                "employee_no": "Employee No",
+                "worker_name": "Worker Name",
+                "power_plant": "Power Plant / Site",
+                "active": "Active",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    with st.expander("Edit / Remove Worker"):
+        worker_options = {
+            int(row["id"]): f"{row['worker_name']} — {row['power_plant']}"
+            for _, row in display_df.iterrows()
+        }
+        if worker_options:
+            selected_worker_id = st.selectbox(
+                "Select worker",
+                list(worker_options.keys()),
+                format_func=lambda x: worker_options[x],
+                key="wm_selected_worker",
+            )
+            selected_row = display_df[display_df["id"] == selected_worker_id].iloc[0]
+            e1, e2 = st.columns(2)
+            with e1:
+                edit_employee_no = st.text_input(
+                    "Employee No",
+                    value=str(selected_row["employee_no"] or ""),
+                    key=f"wm_edit_emp_{selected_worker_id}",
+                )
+                edit_worker_name = st.text_input(
+                    "Worker Name",
+                    value=str(selected_row["worker_name"] or ""),
+                    key=f"wm_edit_name_{selected_worker_id}",
+                )
+            with e2:
+                edit_site_options = KNOWN_POWER_PLANTS.copy()
+                current_site = str(selected_row["power_plant"] or "").strip()
+                if current_site and current_site not in edit_site_options:
+                    edit_site_options.append(current_site)
+                edit_site = st.selectbox(
+                    "Power Plant / Site",
+                    edit_site_options,
+                    index=edit_site_options.index(current_site) if current_site in edit_site_options else 0,
+                    key=f"wm_edit_site_{selected_worker_id}",
+                )
+                edit_active = st.checkbox(
+                    "Active worker",
+                    value=bool(selected_row["active"]),
+                    key=f"wm_edit_active_{selected_worker_id}",
+                )
+
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                if st.button("Save Worker Changes", type="primary", use_container_width=True, key=f"wm_update_{selected_worker_id}"):
+                    try:
+                        save_worker_master(
+                            selected_worker_id,
+                            edit_employee_no,
+                            edit_worker_name,
+                            edit_site,
+                            edit_active,
+                            (user or {}).get("id"),
+                        )
+                        st.success("Worker updated successfully.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+            with ec2:
+                if st.button("Delete Worker", use_container_width=True, key=f"wm_delete_{selected_worker_id}"):
+                    try:
+                        delete_worker_master(selected_worker_id)
+                        st.success("Worker deleted successfully.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Unable to delete worker.")
+                        with st.expander("Technical details"):
+                            st.exception(e)
+
+
+# ============================================================
 # BUDGET EXCEL IMPORT HELPERS
 # ============================================================
 
@@ -5475,6 +5909,8 @@ else:
         render_records()
     elif page == "Budget Entry":
         render_budget_entry()
+    elif page == "Worker Master":
+        render_worker_master()
     elif page == "My Account":
         render_account()
     else:

@@ -360,16 +360,13 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     margin:-105px 0 0 0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
-    overflow:hidden !important;
-    height:calc(100vh - 120px) !important;
+    overflow:visible !important;
 }
 .login-staff-image img {
     display:block !important;
     width:100% !important;
     max-width:none !important;
-    height:calc(100vh - 120px) !important;
-    object-fit:cover !important;
-    object-position:center center !important;
+    height:auto !important;
     margin:0 !important;
     padding:0 !important;
     border-radius:14px !important;

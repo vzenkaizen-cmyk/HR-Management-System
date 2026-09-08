@@ -357,7 +357,7 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     transform:translateX(-85px) !important;
     width:calc(100% + 170px) !important;
     max-width:none !important;
-    margin:80px 0 0 0 !important;
+    margin:-105px 0 0 0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
     overflow:visible !important;

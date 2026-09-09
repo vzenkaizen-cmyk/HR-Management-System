@@ -4088,7 +4088,7 @@ def render_dashboard():
         # The wider first column prevents the full budget figures from
         # being clipped, especially for large Rs. amounts.
         st.subheader("💰 Total Training Budget")
-        tb1, tb2 = st.columns([1.55, 3.45], gap="large")
+        tb1, tb2 = st.columns([2.25, 2.75], gap="large")
 
         with tb1:
             st.markdown(
@@ -4099,7 +4099,7 @@ def render_dashboard():
                     <div style="font-size:14px;color:#334e68;margin-bottom:8px;">
                         Spent / Total Budget
                     </div>
-                    <div style="font-size:23px;color:#0b3558;white-space:nowrap;">
+                    <div style="font-size:21px;color:#0b3558;white-space:nowrap;overflow:hidden;">
                         Rs. {selected_actual_total:,.0f} &nbsp;/&nbsp; Rs. {selected_budget_total:,.0f}
                     </div>
                 </div>

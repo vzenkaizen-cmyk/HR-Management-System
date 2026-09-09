@@ -4081,28 +4081,44 @@ def render_dashboard():
         b3.metric("Variance", f"Rs. {selected_variance:,.0f}")
         b4.metric("Utilization", f"{selected_utilization:,.1f}%")
 
-        # Total Training Budget summary.
-        # Show the spend as a clear percentage of the total budget and keep
-        # the amount readable by giving the amount card more horizontal space.
+        # ------------------------------------------------------------
+        # TOTAL TRAINING BUDGET SUMMARY
+        # ------------------------------------------------------------
+        # Keep this section independent from the existing cards/charts.
+        # The wider first column prevents the full budget figures from
+        # being clipped, especially for large Rs. amounts.
         st.subheader("💰 Total Training Budget")
-        budget_col, progress_col = st.columns([1.35, 3.65], gap="large")
+        tb1, tb2 = st.columns([1.55, 3.45], gap="large")
 
-        with budget_col:
-            st.metric(
-                "Spent / Total Budget",
-                f"Rs. {selected_actual_total:,.0f} / Rs. {selected_budget_total:,.0f}",
+        with tb1:
+            st.markdown(
+                f"""
+                <div style="border:1px solid #d9e2ec;border-radius:14px;
+                            padding:18px 20px;background:white;min-height:96px;
+                            box-sizing:border-box;">
+                    <div style="font-size:14px;color:#334e68;margin-bottom:8px;">
+                        Spent / Total Budget
+                    </div>
+                    <div style="font-size:23px;color:#0b3558;white-space:nowrap;">
+                        Rs. {selected_actual_total:,.0f} &nbsp;/&nbsp; Rs. {selected_budget_total:,.0f}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-        with progress_col:
-            utilization_ratio = min(max(selected_utilization / 100, 0.0), 1.0)
+        with tb2:
             st.markdown(
                 f"**Training budget spent: {selected_utilization:,.1f}%**"
             )
-            st.progress(utilization_ratio)
+            st.progress(
+                min(max(selected_utilization / 100, 0.0), 1.0),
+                text=f"{selected_utilization:,.1f}% spent",
+            )
             st.caption(
-                f"Rs. {selected_actual_total:,.0f} spent out of "
-                f"Rs. {selected_budget_total:,.0f} total budget • "
-                f"Remaining: Rs. {max(selected_variance, 0):,.0f}"
+                f"Rs. {selected_actual_total:,.0f} spent out of Rs. "
+                f"{selected_budget_total:,.0f} total budget • "
+                f"Remaining: Rs. {selected_variance:,.0f}"
             )
 
         # Budget vs Actual graph uses the same top selections.

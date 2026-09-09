@@ -4081,6 +4081,42 @@ def render_dashboard():
         b3.metric("Variance", f"Rs. {selected_variance:,.0f}")
         b4.metric("Utilization", f"{selected_utilization:,.1f}%")
 
+        # ------------------------------------------------------------
+        # TOTAL TRAINING BUDGET / SPENDING SUMMARY
+        # Added without changing the existing Budget vs Actual cards,
+        # charts, filters, or calculations.
+        # ------------------------------------------------------------
+        st.markdown("### 💰 Total Training Budget")
+        budget_summary_left, budget_summary_right = st.columns(
+            [1.15, 2.85], gap="medium"
+        )
+
+        with budget_summary_left:
+            st.metric(
+                "Spent / Total Budget",
+                f"Rs. {selected_actual_total:,.0f} / "
+                f"Rs. {selected_budget_total:,.0f}",
+            )
+
+        with budget_summary_right:
+            budget_progress = min(
+                max(selected_utilization / 100, 0.0),
+                1.0,
+            )
+            st.progress(
+                budget_progress,
+                text=(
+                    f"Training budget spent: "
+                    f"Rs. {selected_actual_total:,.0} "
+                    f"of Rs. {selected_budget_total:,.0} "
+                    f"({selected_utilization:,.1f}%)"
+                ),
+            )
+            st.caption(
+                f"Remaining training budget: "
+                f"Rs. {max(selected_variance, 0):,.0f}"
+            )
+
         # Budget vs Actual graph uses the same top selections.
         plant_category_df = pd.DataFrame(
             {

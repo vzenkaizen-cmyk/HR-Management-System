@@ -2792,26 +2792,41 @@ def render_data_entry():
                 format="%.2f",
             )
 
-            site_workers = get_worker_master(power_plant, active_only=True) if power_plant != "Not Specified" else pd.DataFrame()
+            # Load active employees from Worker Master so participant names can be suggested.
+            # If a training site is selected, only employees assigned to that site are suggested.
+            if power_plant != "Not Specified":
+                site_workers = get_worker_master(power_plant, active_only=True)
+            else:
+                site_workers = get_worker_master(active_only=True)
+
             if not site_workers.empty:
                 worker_labels = site_workers.apply(
-                    lambda r: f"{str(r['worker_name']).strip()}"
-                    + (f" ({str(r['employee_no']).strip()})" if str(r.get('employee_no') or '').strip() else ""),
+                    lambda r: (
+                        f"{str(r['worker_name']).strip()} — {str(r['power_plant']).strip()}"
+                        + (f" ({str(r['employee_no']).strip()})" if str(r.get('employee_no') or '').strip() else "")
+                    ),
                     axis=1,
                 ).tolist()
                 selected_workers = st.multiselect(
-                    "Workers from Worker Master *",
+                    "Names of the Participants *",
                     worker_labels,
                     key="entry_master_workers",
-                    help="Only active workers assigned to the selected Power Plant / Site are shown here.",
+                    help="Select an employee from the Worker Master. The Power Plant / Site where the employee participates is shown with the name.",
                 )
+
                 selected_names = []
+                selected_participant_details = []
                 for label in selected_workers:
-                    selected_names.append(label.split(" (", 1)[0].strip())
+                    # Keep only the employee name in the existing database field.
+                    name_part = label.split(" — ", 1)[0].strip()
+                    name_part = name_part.split(" (", 1)[0].strip()
+                    selected_names.append(name_part)
+                    selected_participant_details.append(label)
+
                 participant_names = ", ".join(selected_names)
                 participants = len(selected_workers)
                 st.info(
-                    f"{participants:,} worker(s) selected from the {power_plant} Worker Master."
+                    f"{participants:,} employee(s) selected from the {power_plant if power_plant != 'Not Specified' else 'Worker Master'}."
                 )
             else:
                 participants = st.number_input(
@@ -2835,11 +2850,11 @@ def render_data_entry():
             )
         else:
             st.text_area(
-                "Names of the Participants",
-                value=participant_names,
+                "Selected Participants",
+                value="\n".join(selected_participant_details),
                 disabled=True,
                 key="entry_master_participant_names",
-                help="Names are filled automatically from the selected Worker Master records.",
+                help="Employee names are suggested from the imported Worker Master, with the Power Plant / Site shown beside each employee.",
             )
 
         total_hours = (

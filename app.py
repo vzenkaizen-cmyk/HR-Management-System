@@ -354,50 +354,66 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page image carousel — edge-to-edge like the KDU-style hero */
+/* Login-page hero carousel — fills the complete main screen area */
 .login-carousel-wrap {
     position:relative !important;
-    width:100% !important;
-    margin:0 !important;
+    width:calc(100% + 8rem) !important;
+    margin-left:-4rem !important;
+    margin-right:0 !important;
+    margin-top:-1rem !important;
     padding:0 !important;
     overflow:hidden !important;
     background:#0b4770 !important;
     box-shadow:0 8px 24px rgba(15,69,105,.12) !important;
 }
+
 .login-carousel-image {
     display:block !important;
     width:100% !important;
-    height:calc(100vh - 145px) !important;
-    min-height:500px !important;
-    max-height:690px !important;
+    height:calc(100vh - 85px) !important;
+    min-height:560px !important;
+    max-height:none !important;
     object-fit:cover !important;
     object-position:center !important;
 }
+
 .login-carousel-caption {
     position:absolute !important;
     left:28px !important;
     bottom:22px !important;
     z-index:3 !important;
-    background:rgba(4,43,70,.78) !important;
+    background:rgba(4,43,70,.80) !important;
     color:#fff !important;
-    border:1px solid rgba(255,255,255,.28) !important;
+    border:1px solid rgba(255,255,255,.30) !important;
     border-radius:10px !important;
-    padding:8px 14px !important;
+    padding:9px 15px !important;
     font-size:14px !important;
     font-weight:700 !important;
     backdrop-filter:blur(5px) !important;
 }
 
-/* Carousel arrow button styling — floating over the hero image */
+/* Remove the normal Streamlit spacing around the login hero */
+section.main > div[data-testid="stMainBlockContainer"] {
+    padding-top:0 !important;
+}
+
+/* Carousel arrows — floating at the two sides of the main screen */
 .st-key-login_carousel_prev,
 .st-key-login_carousel_next {
     position:fixed !important;
-    top:50% !important;
+    top:54% !important;
     transform:translateY(-50%) !important;
     z-index:9999 !important;
 }
-.st-key-login_carousel_prev { left:280px !important; }
-.st-key-login_carousel_next { right:18px !important; }
+
+.st-key-login_carousel_prev {
+    left:280px !important;
+}
+
+.st-key-login_carousel_next {
+    right:18px !important;
+}
+
 .st-key-login_carousel_prev button,
 .st-key-login_carousel_next button {
     min-width:48px !important;
@@ -405,7 +421,7 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     height:48px !important;
     padding:0 !important;
     border-radius:50% !important;
-    background:rgba(10,55,86,.78) !important;
+    background:rgba(10,55,86,.82) !important;
     border:1px solid rgba(255,255,255,.55) !important;
     color:#fff !important;
     -webkit-text-fill-color:#fff !important;
@@ -413,40 +429,34 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     line-height:1 !important;
     box-shadow:0 4px 15px rgba(0,0,0,.24) !important;
 }
+
 .st-key-login_carousel_prev button:hover,
 .st-key-login_carousel_next button:hover {
     background:#0879a5 !important;
     border-color:#fff !important;
 }
+
 .st-key-login_carousel_prev button *,
 .st-key-login_carousel_next button * {
     color:#fff !important;
     -webkit-text-fill-color:#fff !important;
 }
 
-/* Floating AI button */
-.st-key-hr_ai_assistant {
+/* V-TRAIN AI popover */
+[data-testid="stPopover"] {
     position:fixed !important;
     right:18px !important;
     bottom:18px !important;
     z-index:10000 !important;
 }
-.st-key-hr_ai_assistant > button {
-    background:#0a4778 !important;
-    color:#fff !important;
-    -webkit-text-fill-color:#fff !important;
-    border:2px solid #ff8a00 !important;
-    border-radius:28px !important;
-    padding:8px 18px !important;
-    font-weight:800 !important;
-    box-shadow:0 5px 18px rgba(0,0,0,.24) !important;
-}
-.st-key-hr_ai_assistant > button:hover { background:#0879a5 !important; }
-.st-key-hr_ai_assistant > button * {
-    color:#fff !important;
-    -webkit-text-fill-color:#fff !important;
-}
 
+[data-testid="stPopover"] > button {
+    border-radius:24px !important;
+    padding:9px 18px !important;
+    font-weight:800 !important;
+    border:2px solid #f58220 !important;
+    box-shadow:0 4px 15px rgba(0,0,0,.20) !important;
+}
 section[data-testid="stSidebar"] .stButton > button {
     background:rgba(255,255,255,.07) !important;
     color:#fff !important; -webkit-text-fill-color:#fff !important;
@@ -2642,8 +2652,6 @@ def render_login():
 
     # ------------------------------------------------------------
     # KDU-style login hero carousel
-    # Slide 1: existing Staff.png image
-    # Slide 2: Vidu Lanka team/leadership image embedded above
     # ------------------------------------------------------------
     if "login_slide" not in st.session_state:
         st.session_state.login_slide = 0
@@ -2651,7 +2659,9 @@ def render_login():
     staff_image = Path("Staff.png")
     staff_image_base64 = ""
     if staff_image.exists():
-        staff_image_base64 = base64.b64encode(staff_image.read_bytes()).decode("ascii")
+        staff_image_base64 = base64.b64encode(
+            staff_image.read_bytes()
+        ).decode("ascii")
 
     login_slides = [
         {
@@ -2667,38 +2677,51 @@ def render_login():
     ]
 
     available_slides = [s for s in login_slides if s["available"]]
+
     if available_slides:
         slide_index = st.session_state.login_slide % len(available_slides)
         slide = available_slides[slide_index]
 
-        # Arrow controls are real Streamlit buttons and are fixed over the
-        # image, matching the visual behaviour of the KDU hero carousel.
+        # Previous arrow
         if st.button("‹", key="login_carousel_prev", help="Previous image"):
-            st.session_state.login_slide = (slide_index - 1) % len(available_slides)
+            st.session_state.login_slide = (
+                slide_index - 1
+            ) % len(available_slides)
             st.rerun()
 
+        # Full-width hero image
         st.markdown(
-            f'''<div class="login-carousel-wrap">
+            f'''
+            <div class="login-carousel-wrap">
                 <img class="login-carousel-image"
                      src="{slide["src"]}"
                      alt="HR Training Dashboard hero image" />
-                <div class="login-carousel-caption">{slide["caption"]}</div>
-            </div>''',
+                <div class="login-carousel-caption">
+                    {slide["caption"]}
+                </div>
+            </div>
+            ''',
             unsafe_allow_html=True,
         )
 
+        # Next arrow
         if st.button("›", key="login_carousel_next", help="Next image"):
-            st.session_state.login_slide = (slide_index + 1) % len(available_slides)
+            st.session_state.login_slide = (
+                slide_index + 1
+            ) % len(available_slides)
             st.rerun()
 
-
     # ------------------------------------------------------------
-    # Lightweight KDU-style AI assistant
-    # This is self-contained and requires no API key or extra package.
+    # V-TRAIN AI assistant
+    #
+    # IMPORTANT: st.popover() does NOT accept a key argument on
+    # Streamlit versions used by Streamlit Cloud. The previous
+    # version caused the TypeError shown on the login page.
     # ------------------------------------------------------------
-    with st.popover("🤖 V-TRAIN AI", key="hr_ai_assistant"):
+    with st.popover("🤖 V-TRAIN AI"):
         st.markdown("### V-TRAIN AI Assistant")
         st.caption("Quick help for the HR Training Dashboard")
+
         question = st.selectbox(
             "How can I help?",
             [
@@ -2709,15 +2732,26 @@ def render_login():
                 "What can the dashboard show?",
                 "Where is the Worker Master?",
             ],
-            key="hr_ai_question",
         )
+
         answers = {
-            "How do I log in?": "Use your registered username/email and password in the Log in tab. If you do not have an account, use Create account.",
-            "Where do I enter training data?": "After logging in, open Data Entry from the sidebar or Home page and add the training programme details.",
-            "Where can I enter the annual budget?": "Open Budget Entry from the sidebar or Home page to enter annual training budgets by location and category.",
-            "What can the dashboard show?": "The dashboard provides training KPIs, trends, costs, training hours and Budget vs Actuals.",
-            "Where is the Worker Master?": "After logging in, use the Worker Master page from the sidebar to manage worker information.",
+            "How do I log in?":
+                "Use your registered username/email and password in the "
+                "Log in tab. If you do not have an account, use Create account.",
+            "Where do I enter training data?":
+                "After logging in, open Data Entry from the sidebar or Home "
+                "page and add the training programme details.",
+            "Where can I enter the annual budget?":
+                "Open Budget Entry from the sidebar or Home page to enter "
+                "annual training budgets by location and category.",
+            "What can the dashboard show?":
+                "The dashboard provides training KPIs, trends, costs, "
+                "training hours and Budget vs Actuals.",
+            "Where is the Worker Master?":
+                "After logging in, use the Worker Master page from the "
+                "sidebar to manage worker information.",
         }
+
         if question != "Select a topic":
             st.info(answers[question])
 

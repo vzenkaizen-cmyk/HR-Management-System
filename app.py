@@ -354,27 +354,38 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page hero carousel — fills the complete main screen area */
+/* ============================================================
+   LOGIN HERO — TRUE EDGE-TO-EDGE MAIN AREA
+   ============================================================ */
+section.main > div[data-testid="stMainBlockContainer"],
+section.main > div[data-testid="stMainBlockContainer"] > div {
+    max-width:none !important;
+    padding-top:0 !important;
+    padding-left:0 !important;
+    padding-right:0 !important;
+    padding-bottom:0 !important;
+}
+
 .login-carousel-wrap {
     position:relative !important;
-    width:calc(100% + 8rem) !important;
-    margin-left:-4rem !important;
-    margin-right:0 !important;
-    margin-top:-1rem !important;
+    width:100% !important;
+    height:calc(100vh - 120px) !important;
+    min-height:590px !important;
+    margin:0 !important;
     padding:0 !important;
     overflow:hidden !important;
     background:#0b4770 !important;
-    box-shadow:0 8px 24px rgba(15,69,105,.12) !important;
+    box-shadow:none !important;
 }
 
 .login-carousel-image {
     display:block !important;
     width:100% !important;
-    height:calc(100vh - 85px) !important;
-    min-height:560px !important;
+    height:100% !important;
+    min-height:0 !important;
     max-height:none !important;
     object-fit:cover !important;
-    object-position:center !important;
+    object-position:center center !important;
 }
 
 .login-carousel-caption {
@@ -392,26 +403,22 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     backdrop-filter:blur(5px) !important;
 }
 
-/* Remove the normal Streamlit spacing around the login hero */
-section.main > div[data-testid="stMainBlockContainer"] {
-    padding-top:0 !important;
-}
-
-/* Carousel arrows — floating at the two sides of the main screen */
+/* Carousel arrows — fixed to the two edges of the main screen */
 .st-key-login_carousel_prev,
 .st-key-login_carousel_next {
     position:fixed !important;
     top:54% !important;
     transform:translateY(-50%) !important;
     z-index:9999 !important;
+    margin:0 !important;
 }
 
 .st-key-login_carousel_prev {
-    left:280px !important;
+    left:16px !important;
 }
 
 .st-key-login_carousel_next {
-    right:18px !important;
+    right:16px !important;
 }
 
 .st-key-login_carousel_prev button,
@@ -442,20 +449,34 @@ section.main > div[data-testid="stMainBlockContainer"] {
     -webkit-text-fill-color:#fff !important;
 }
 
-/* V-TRAIN AI popover */
+/* ============================================================
+   V-TRAIN AI — FLOATING RIGHT/BOTTOM BUTTON
+   ============================================================ */
+div[data-testid="stPopover"],
 [data-testid="stPopover"] {
     position:fixed !important;
-    right:18px !important;
-    bottom:18px !important;
+    right:20px !important;
+    bottom:20px !important;
+    left:auto !important;
+    top:auto !important;
+    width:max-content !important;
+    max-width:max-content !important;
+    margin:0 !important;
+    padding:0 !important;
     z-index:10000 !important;
+    display:block !important;
 }
 
+div[data-testid="stPopover"] > button,
 [data-testid="stPopover"] > button {
+    width:auto !important;
+    min-width:150px !important;
     border-radius:24px !important;
     padding:9px 18px !important;
     font-weight:800 !important;
     border:2px solid #f58220 !important;
-    box-shadow:0 4px 15px rgba(0,0,0,.20) !important;
+    box-shadow:0 4px 15px rgba(0,0,0,.25) !important;
+    white-space:nowrap !important;
 }
 section[data-testid="stSidebar"] .stButton > button {
     background:rgba(255,255,255,.07) !important;
@@ -2713,10 +2734,6 @@ def render_login():
 
     # ------------------------------------------------------------
     # V-TRAIN AI assistant
-    #
-    # IMPORTANT: st.popover() does NOT accept a key argument on
-    # Streamlit versions used by Streamlit Cloud. The previous
-    # version caused the TypeError shown on the login page.
     # ------------------------------------------------------------
     with st.popover("🤖 V-TRAIN AI"):
         st.markdown("### V-TRAIN AI Assistant")

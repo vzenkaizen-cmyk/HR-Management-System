@@ -356,7 +356,7 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     position:fixed !important;
     top:0 !important;
     bottom:0 !important;
-    left:21rem !important;
+    left:16.5rem !important;
     right:0 !important;
     width:auto !important;
     max-width:none !important;

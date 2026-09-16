@@ -2723,6 +2723,11 @@ def render_data_entry():
     )
 
     power_plants = get_power_plants()
+    # Display the existing all-sites option with the requested wording.
+    power_plants = [
+        "All Plant Sites" if str(site).strip().casefold() == "all sites" else site
+        for site in power_plants
+    ]
 
     with st.container(border=True):
         left, right = st.columns(2)
@@ -2781,6 +2786,8 @@ def render_data_entry():
                 )
             elif plant_mode == "No Power Plant / Not Applicable":
                 power_plant = "Not Specified"
+            elif plant_mode == "All Plant Sites":
+                power_plant = "All Plant Sites"
             else:
                 power_plant = plant_mode
 
@@ -2793,7 +2800,7 @@ def render_data_entry():
 
             # Load active employees from Worker Master so participant names can be suggested.
             # Only employees assigned to the selected Power Plant / Site are suggested.
-            if power_plant != "Not Specified":
+            if power_plant not in {"Not Specified", "All Plant Sites"}:
                 site_workers = get_worker_master(power_plant, active_only=True)
             else:
                 site_workers = get_worker_master(active_only=True)
@@ -2838,9 +2845,22 @@ def render_data_entry():
         st.markdown(
             """
             <style>
-            /* Keep the participant count label clearly visible in black. */
+            /* Keep participant-related text clearly visible. */
             label[data-testid="stWidgetLabel"] p {
                 color: #000000 !important;
+            }
+
+            /* Names selected in "Names of the Participants". */
+            div[data-testid="stMultiSelect"] div[data-baseweb="tag"] span {
+                color: #000000 !important;
+                -webkit-text-fill-color: #000000 !important;
+            }
+
+            /* Text shown in the disabled "Selected Participants" box. */
+            textarea[disabled] {
+                color: #000000 !important;
+                -webkit-text-fill-color: #000000 !important;
+                opacity: 1 !important;
             }
             </style>
             """,

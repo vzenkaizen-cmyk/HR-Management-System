@@ -2552,7 +2552,7 @@ def render_login():
             with st.form("signup_form"):
                 full_name = st.text_input(
                     "Full name",
-                    placeholder="e.g. Samoda De Silva",
+                    placeholder="e.g. ABC Perera",
                 )
                 username = st.text_input(
                     "Username",

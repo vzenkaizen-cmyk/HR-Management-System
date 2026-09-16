@@ -2767,7 +2767,6 @@ def render_data_entry():
             plant_mode = st.selectbox(
                 "Power Plant *",
                 [
-                    "All Plant Sites",
                     "No Power Plant / Not Applicable"
                 ] + power_plants + [
                     "+ Add new power plant"
@@ -2793,12 +2792,11 @@ def render_data_entry():
             )
 
             # Load active employees from Worker Master so participant names can be suggested.
-            # "All Plant Sites" means employees from every active site can be selected.
-            # A specific plant means only employees assigned to that plant are suggested.
-            if plant_mode == "All Plant Sites" or power_plant == "Not Specified":
-                site_workers = get_worker_master(active_only=True)
-            else:
+            # Only employees assigned to the selected Power Plant / Site are suggested.
+            if power_plant != "Not Specified":
                 site_workers = get_worker_master(power_plant, active_only=True)
+            else:
+                site_workers = get_worker_master(active_only=True)
 
             if not site_workers.empty:
                 worker_labels = site_workers.apply(
@@ -2836,6 +2834,18 @@ def render_data_entry():
                     step=1,
                     format="%d",
                 )
+
+        st.markdown(
+            """
+            <style>
+            /* Keep the participant count label clearly visible in black. */
+            label[data-testid="stWidgetLabel"] p {
+                color: #000000 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         cost = st.number_input(
                 "Training Cost (Rs.)",

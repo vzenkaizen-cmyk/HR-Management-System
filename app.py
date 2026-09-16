@@ -1169,7 +1169,7 @@ def save_worker_master(worker_id, employee_no, employee_name, power_plant, activ
 
 
 def delete_worker_master(worker_id, user=None):
-    """Delete one Worker Master record. Admin users only."""
+    """Delete one Employee Master record. Admin users only."""
     if str((user or {}).get("role", "user")).strip().lower() != "admin":
         raise PermissionError("Administrator access is required to delete an employee.")
     run_write(
@@ -1179,9 +1179,9 @@ def delete_worker_master(worker_id, user=None):
 
 
 def delete_all_worker_master(user=None):
-    """Delete only Worker Master records; training records are not deleted. Admin users only."""
+    """Delete only Employee Master records; training records are not deleted. Admin users only."""
     if str((user or {}).get("role", "user")).strip().lower() != "admin":
-        raise PermissionError("Administrator access is required to delete Worker Master records.")
+        raise PermissionError("Administrator access is required to delete Employee Master records.")
     run_write("DELETE FROM public.worker_master")
 
 
@@ -1207,7 +1207,7 @@ def prepare_worker_master_excel(uploaded_file):
         raw = pd.read_excel(uploaded_file, header=None)
 
     if raw.empty:
-        raise ValueError("The Worker Master Excel file is empty.")
+        raise ValueError("The Employee Master Excel file is empty.")
 
     aliases = {
         "employee_no": [
@@ -1216,7 +1216,7 @@ def prepare_worker_master_excel(uploaded_file):
         ],
         "employee_name": [
             "employee name", "employee", "name",
-            "worker name", "worker", "employee_name", "worker_name"
+            "employee name", "worker", "employee_name", "worker_name"
         ],
         "power_plant": [
             "power plant", "plant", "plant name", "site", "location",
@@ -1374,7 +1374,7 @@ PAGES = [
     "Import Excel",
     "Records",
     "Budget Entry",
-    "Worker Master",
+    "Employee Master",
     "My Account",
 ]
 
@@ -2466,7 +2466,7 @@ def render_sidebar():
             "Import Excel": "📥",
             "Records": "📁",
             "Budget Entry": "💰",
-            "Worker Master": "👷",
+            "Employee Master": "👷",
             "My Account": "👤",
         }
 
@@ -2807,7 +2807,7 @@ def render_data_entry():
             </div>
             <div class="formula-text">
                 Total Training Hours =
-                Training Hours per Worker × No. of Employees Attended
+                Training Hours per Employee × No. of Employees Attended
             </div>
             <div class="small-note">
                 Example: 3 hours × 10 employees =
@@ -2888,13 +2888,13 @@ def render_data_entry():
                 power_plant = plant_mode
 
             training_hours = st.number_input(
-                "Training Hours per Worker *",
+                "Training Hours per Employee *",
                 min_value=0.0,
                 step=0.5,
                 format="%.2f",
             )
 
-            # Load active employees from Worker Master so participant names can be suggested.
+            # Load active employees from Employee Master so participant names can be suggested.
             # Only employees assigned to the selected Power Plant / Site are suggested.
             if power_plant not in {"Not Specified", "All Plant Sites"}:
                 site_employees = get_worker_master(power_plant, active_only=True)
@@ -2913,7 +2913,7 @@ def render_data_entry():
                     "Names of the Participants *",
                     worker_labels,
                     key="entry_master_employees",
-                    help="Select an employee from the Worker Master. The Power Plant / Site where the employee participates is shown with the name.",
+                    help="Select an employee from the Employee Master. The Power Plant / Site where the employee participates is shown with the name.",
                 )
 
                 selected_names = []
@@ -2928,7 +2928,7 @@ def render_data_entry():
                 participant_names = ", ".join(selected_names)
                 participants = len(selected_employees)
                 st.info(
-                    f"{participants:,} employee(s) selected from the {power_plant if power_plant != 'Not Specified' else 'Worker Master'}."
+                    f"{participants:,} employee(s) selected from the {power_plant if power_plant != 'Not Specified' else 'Employee Master'}."
                 )
             else:
                 participants = st.number_input(
@@ -2963,13 +2963,8 @@ def render_data_entry():
             unsafe_allow_html=True,
         )
 
-        cost = st.number_input(
-                "Training Cost (Rs.)",
-                min_value=0.0,
-                step=1000.0,
-                format="%.2f",
-            )
-
+        # Keep the selected-participant details immediately below the
+        # participant selection, so they are visible without scrolling.
         if site_employees.empty:
             participant_names = st.text_area(
                 "Names of the Participants",
@@ -2981,7 +2976,14 @@ def render_data_entry():
                 value="\n".join(selected_participant_details),
                 disabled=True,
                 key="entry_master_participant_names",
-                help="Employee names are suggested from the imported Worker Master, with the Power Plant / Site shown beside each employee.",
+                help="Employee names are suggested from the imported Employee Master, with the Power Plant / Site shown beside each employee.",
+            )
+
+        cost = st.number_input(
+                "Training Cost (Rs.)",
+                min_value=0.0,
+                step=1000.0,
+                format="%.2f",
             )
 
         total_hours = (
@@ -3032,7 +3034,7 @@ def render_data_entry():
 
         if training_hours <= 0:
             st.error(
-                "Training Hours per Worker must be greater than 0."
+                "Training Hours per Employee must be greater than 0."
             )
             return
 
@@ -3093,7 +3095,7 @@ def render_import_excel():
             </div>
             <div class="formula-text">
                 Total Training Hours =
-                Training Hours per Worker × No. of Employees Attended
+                Training Hours per Employee × No. of Employees Attended
             </div>
             <div class="small-note">
                 The Excel Total Hours value is not trusted.
@@ -3901,7 +3903,7 @@ def render_dashboard():
             ]
 
         # In participant mode, Training Hours means the hours attended
-        # by that participant (hours per worker), not the full programme
+        # by that participant (hours per employee), not the full programme
         # person-hours. With no participant search, retain the original
         # programme-hours calculation.
         if participant_search.strip():
@@ -3939,7 +3941,7 @@ def render_dashboard():
         k4, k5, k6 = st.columns(3, gap="medium")
         k4.metric("Avg. Hours / Programme", f"{avg_hours_per_programme:,.1f}")
         k5.metric("Training Cost", f"Rs. {total_cost:,.0f}")
-        k6.metric("Hours / Worker", f"{avg_hours_per_worker:,.1f}")
+        k6.metric("Hours / Employee", f"{avg_hours_per_worker:,.1f}")
 
         st.write("")
 
@@ -4263,6 +4265,57 @@ def render_dashboard():
                 f"Remaining: Rs. {selected_variance:,.0f}"
             )
 
+        # ------------------------------------------------------------
+        # TOTAL TRAINING HOURS SUMMARY
+        # Mirrors the budget summary above, using total person-hours.
+        # The percentage shows the selected/filter-matched training hours
+        # as a share of all training hours in the current dataset.
+        # ------------------------------------------------------------
+        selected_training_hours = float(
+            dashboard_source["calculated_total_hours"].sum()
+        ) if "calculated_total_hours" in dashboard_source.columns else 0.0
+        all_training_hours = float(
+            df["calculated_total_hours"].sum()
+        ) if "calculated_total_hours" in df.columns else 0.0
+        training_hours_utilization = (
+            (selected_training_hours / all_training_hours) * 100
+            if all_training_hours > 0
+            else 0
+        )
+
+        st.subheader("⏱️ Total Training Hours")
+        th1, th2 = st.columns([2.25, 2.75], gap="large")
+
+        with th1:
+            st.markdown(
+                f"""
+                <div style="border:1px solid #d9e2ec;border-radius:14px;
+                            padding:18px 20px;background:white;min-height:96px;
+                            box-sizing:border-box;">
+                    <div style="font-size:14px;color:#334e68;margin-bottom:8px;">
+                        Selected / Total Training Hours
+                    </div>
+                    <div style="font-size:21px;color:#0b3558;white-space:nowrap;overflow:hidden;">
+                        {selected_training_hours:,.1f} &nbsp;/&nbsp; {all_training_hours:,.1f} hours
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with th2:
+            st.markdown(
+                f"**Training hours represented: {training_hours_utilization:,.1f}%**"
+            )
+            st.progress(
+                min(max(training_hours_utilization / 100, 0.0), 1.0),
+                text=f"{training_hours_utilization:,.1f}% of total hours",
+            )
+            st.caption(
+                f"{selected_training_hours:,.1f} selected hours out of "
+                f"{all_training_hours:,.1f} total training hours."
+            )
+
         # Budget vs Actual graph uses the same top selections.
         plant_category_df = pd.DataFrame(
             {
@@ -4401,7 +4454,7 @@ def render_dashboard():
                 "Category",
                 "Trainer",
                 "Plant Site",
-                "Hours / Worker",
+                "Hours / Employee",
                 "Employees",
                 "Total Training Hours",
                 "Training Cost (Rs.)",
@@ -4619,7 +4672,7 @@ def render_records():
         "Category",
         "Trainer",
         "Plant Site",
-        "Hours / Worker",
+        "Hours / Employee",
         "Employees",
         "Total Training Hours",
         "Cost (Rs.)",
@@ -4799,7 +4852,7 @@ def render_records():
             )
 
             training_hours = st.number_input(
-                "Training Hours per Worker",
+                "Training Hours per Employee",
                 min_value=0.0,
                 value=float(
                     row["training_hours"]
@@ -4961,19 +5014,19 @@ def render_records():
 def render_worker_master():
     user = require_admin()
 
-    st.title("Worker Master")
+    st.title("Employee Master")
     st.caption(
-        "Maintain one master list of employees and assign each worker to a Power Plant / Site. "
+        "Maintain one master list of employees and assign each employee to a Power Plant / Site. "
         "When entering training data, only employees assigned to the selected site are shown."
     )
 
     with st.container(border=True):
-        st.subheader("📥 Import Worker Master")
+        st.subheader("📥 Import Employee Master")
         st.caption(
             "Excel columns: Employee Name * , Power Plant / Site * , Employee No (optional), Active (optional)."
         )
         uploaded_employees = st.file_uploader(
-            "Choose Worker Master Excel file",
+            "Choose Employee Master Excel file",
             type=["xlsx", "xls", "csv"],
             key="worker_master_upload",
         )
@@ -4987,7 +5040,7 @@ def render_worker_master():
                 if not worker_preview.empty:
                     st.dataframe(worker_preview, use_container_width=True, hide_index=True)
                     if st.button(
-                        "Import / Update Worker Master",
+                        "Import / Update Employee Master",
                         type="primary",
                         use_container_width=True,
                         key="import_worker_master_button",
@@ -4996,17 +5049,17 @@ def render_worker_master():
                             saved = import_worker_master_dataframe(
                                 worker_preview, (user or {}).get("id")
                             )
-                            st.success(f"Worker Master updated successfully — {saved:,} rows processed.")
+                            st.success(f"Employee Master updated successfully — {saved:,} rows processed.")
                             st.rerun()
                         except Exception as e:
-                            st.error("Unable to import the Worker Master.")
+                            st.error("Unable to import the Employee Master.")
                             with st.expander("Technical details"):
                                 st.exception(e)
             except Exception as e:
                 st.error(str(e))
 
     with st.container(border=True):
-        st.subheader("➕ Add Worker")
+        st.subheader("➕ Add Employee")
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1:
             employee_no = st.text_input("Employee No", key="wm_employee_no")
@@ -5020,22 +5073,22 @@ def render_worker_master():
             )
         if worker_site == "+ Add new site":
             worker_site = st.text_input("New Power Plant / Site *", key="wm_new_site")
-        active = st.checkbox("Active worker", value=True, key="wm_active")
+        active = st.checkbox("Active employee", value=True, key="wm_active")
 
-        if st.button("Add / Update Worker", type="primary", use_container_width=True, key="wm_save"):
+        if st.button("Add / Update Employee", type="primary", use_container_width=True, key="wm_save"):
             try:
                 save_worker_master(
                     None, employee_no, employee_name, worker_site, active, (user or {}).get("id")
                 )
-                st.success("Worker Master updated successfully.")
+                st.success("Employee Master updated successfully.")
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
 
     worker_df = get_worker_master(active_only=False)
-    st.subheader("Worker Master List")
+    st.subheader("Employee Master List")
     if worker_df.empty:
-        st.info("No employees have been added yet. Import your Worker Master Excel file above.")
+        st.info("No employees have been added yet. Import your Employee Master Excel file above.")
         return
 
     site_filter = st.selectbox(
@@ -5062,14 +5115,14 @@ def render_worker_master():
         hide_index=True,
     )
 
-    with st.expander("Edit / Remove Worker"):
+    with st.expander("Edit / Remove Employee"):
         worker_options = {
             int(row["id"]): f"{row['employee_name']} — {row['power_plant']}"
             for _, row in display_df.iterrows()
         }
         if worker_options:
             selected_worker_id = st.selectbox(
-                "Select worker",
+                "Select employee",
                 list(worker_options.keys()),
                 format_func=lambda x: worker_options[x],
                 key="wm_selected_worker",
@@ -5099,14 +5152,14 @@ def render_worker_master():
                     key=f"wm_edit_site_{selected_worker_id}",
                 )
                 edit_active = st.checkbox(
-                    "Active worker",
+                    "Active employee",
                     value=bool(selected_row["active"]),
                     key=f"wm_edit_active_{selected_worker_id}",
                 )
 
             ec1, ec2 = st.columns(2)
             with ec1:
-                if st.button("Save Worker Changes", type="primary", use_container_width=True, key=f"wm_update_{selected_worker_id}"):
+                if st.button("Save Employee Changes", type="primary", use_container_width=True, key=f"wm_update_{selected_worker_id}"):
                     try:
                         save_worker_master(
                             selected_worker_id,
@@ -5116,7 +5169,7 @@ def render_worker_master():
                             edit_active,
                             (user or {}).get("id"),
                         )
-                        st.success("Worker updated successfully.")
+                        st.success("Employee updated successfully.")
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
@@ -5124,34 +5177,34 @@ def render_worker_master():
             if str((user or {}).get("role", "user")).strip().lower() == "admin":
                 with ec2:
                     if st.button(
-                        "Delete Worker",
+                        "Delete Employee",
                         use_container_width=True,
                         key=f"wm_delete_{selected_worker_id}",
                     ):
                         try:
                             delete_worker_master(selected_worker_id, user)
-                            st.success("Worker deleted successfully.")
+                            st.success("Employee deleted successfully.")
                             st.rerun()
                         except Exception as e:
-                            st.error("Unable to delete worker.")
+                            st.error("Unable to delete employee.")
                             with st.expander("Technical details"):
                                 st.exception(e)
 
-    # Bulk removal option for clearing imported/test Worker Master data.
+    # Bulk removal option for clearing imported/test Employee Master data.
     # This operates only on worker_master and does not delete training_records.
     # The entire delete section is visible only to administrators.
     if str((user or {}).get("role", "user")).strip().lower() == "admin":
-        with st.expander("🗑️ Delete All Worker Master Records"):
+        with st.expander("🗑️ Delete All Employee Master Records"):
             st.warning(
-                "This removes all records from the Worker Master only. "
+                "This removes all records from the Employee Master only. "
                 "Existing Training Records are not deleted."
             )
             confirm_delete_all = st.checkbox(
-                "I confirm that I want to delete all Worker Master records.",
+                "I confirm that I want to delete all Employee Master records.",
                 key="wm_confirm_delete_all",
             )
             if st.button(
-                "Delete All Worker Master Records",
+                "Delete All Employee Master Records",
                 type="secondary",
                 disabled=not confirm_delete_all,
                 use_container_width=True,
@@ -5160,12 +5213,12 @@ def render_worker_master():
                 try:
                     delete_all_worker_master(user)
                     st.success(
-                        "All Worker Master records were deleted. "
+                        "All Employee Master records were deleted. "
                         "Existing Training Records were not deleted."
                     )
                     st.rerun()
                 except Exception as e:
-                    st.error("Unable to delete all Worker Master records.")
+                    st.error("Unable to delete all Employee Master records.")
                     with st.expander("Technical details"):
                         st.exception(e)
 
@@ -6129,7 +6182,7 @@ else:
         render_records()
     elif page == "Budget Entry":
         render_budget_entry()
-    elif page == "Worker Master":
+    elif page == "Employee Master":
         render_worker_master()
     elif page == "My Account":
         render_account()

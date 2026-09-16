@@ -2591,7 +2591,7 @@ def render_login():
                 confirm = st.text_input(
                     "Confirm password",
                     type="password",
-                    placeholder="Confirm",
+                    placeholder="Re-enter password",
                 )
                 submitted = st.form_submit_button(
                     "Create account",

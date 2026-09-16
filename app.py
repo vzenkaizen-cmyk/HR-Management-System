@@ -2504,8 +2504,8 @@ def render_login():
 
             with st.form("login_form"):
                 identifier = st.text_input(
-                    "Username or email",
-                    placeholder="Enter username or email",
+                    "Email",
+                    placeholder="Enter email",
                 )
                 password = st.text_input(
                     "Password",
@@ -2521,7 +2521,7 @@ def render_login():
             if submitted:
                 if not identifier.strip() or not password:
                     st.error(
-                        "Please enter both username/email and password."
+                        "Please enter both email and password."
                     )
                 else:
                     try:
@@ -2551,25 +2551,26 @@ def render_login():
 
             with st.form("signup_form"):
                 full_name = st.text_input(
-                    "Full name",
+                    "Name with initials",
                     placeholder="e.g. ABC Perera",
                 )
                 username = st.text_input(
-                    "Username",
-                    placeholder="e.g. samoda",
+                    "First name",
+                    placeholder="e.g. ABC",
                 )
                 email = st.text_input(
                     "Email",
-                    placeholder="name@company.com",
+                    placeholder="e.g. firstname@company.com",
                 )
                 password = st.text_input(
                     "Password",
                     type="password",
-                    placeholder="Minimum 8 characters",
+                    placeholder="Enter your password",
                 )
                 confirm = st.text_input(
                     "Confirm password",
                     type="password",
+                    placeholder="Re-enter your password",
                 )
                 submitted = st.form_submit_button(
                     "Create account",

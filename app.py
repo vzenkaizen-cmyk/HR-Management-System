@@ -1118,15 +1118,20 @@ def save_worker_master(worker_id, employee_no, employee_name, power_plant, activ
     )
 
 
-def delete_worker_master(worker_id):
+def delete_worker_master(worker_id, user=None):
+    """Delete one Worker Master record. Admin users only."""
+    if str((user or {}).get("role", "user")).strip().lower() != "admin":
+        raise PermissionError("Administrator access is required to delete an employee.")
     run_write(
         "DELETE FROM public.worker_master WHERE id = :worker_id",
         {"worker_id": int(worker_id)},
     )
 
 
-def delete_all_worker_master():
-    """Delete only Worker Master records; training records are not deleted."""
+def delete_all_worker_master(user=None):
+    """Delete only Worker Master records; training records are not deleted. Admin users only."""
+    if str((user or {}).get("role", "user")).strip().lower() != "admin":
+        raise PermissionError("Administrator access is required to delete Worker Master records.")
     run_write("DELETE FROM public.worker_master")
 
 
@@ -5052,46 +5057,54 @@ def render_worker_master():
                         st.rerun()
                     except Exception as e:
                         st.error(str(e))
-            with ec2:
-                if st.button("Delete Worker", use_container_width=True, key=f"wm_delete_{selected_worker_id}"):
-                    try:
-                        delete_worker_master(selected_worker_id)
-                        st.success("Worker deleted successfully.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Unable to delete worker.")
-                        with st.expander("Technical details"):
-                            st.exception(e)
+            # Deletion is explicitly restricted to administrators.
+            if str((user or {}).get("role", "user")).strip().lower() == "admin":
+                with ec2:
+                    if st.button(
+                        "Delete Worker",
+                        use_container_width=True,
+                        key=f"wm_delete_{selected_worker_id}",
+                    ):
+                        try:
+                            delete_worker_master(selected_worker_id, user)
+                            st.success("Worker deleted successfully.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error("Unable to delete worker.")
+                            with st.expander("Technical details"):
+                                st.exception(e)
 
     # Bulk removal option for clearing imported/test Worker Master data.
     # This operates only on worker_master and does not delete training_records.
-    with st.expander("🗑️ Delete All Worker Master Records"):
-        st.warning(
-            "This removes all records from the Worker Master only. "
-            "Existing Training Records are not deleted."
-        )
-        confirm_delete_all = st.checkbox(
-            "I confirm that I want to delete all Worker Master records.",
-            key="wm_confirm_delete_all",
-        )
-        if st.button(
-            "Delete All Worker Master Records",
-            type="secondary",
-            disabled=not confirm_delete_all,
-            use_container_width=True,
-            key="wm_delete_all",
-        ):
-            try:
-                delete_all_worker_master()
-                st.success(
-                    "All Worker Master records were deleted. "
-                    "Existing Training Records were not deleted."
-                )
-                st.rerun()
-            except Exception as e:
-                st.error("Unable to delete all Worker Master records.")
-                with st.expander("Technical details"):
-                    st.exception(e)
+    # The entire delete section is visible only to administrators.
+    if str((user or {}).get("role", "user")).strip().lower() == "admin":
+        with st.expander("🗑️ Delete All Worker Master Records"):
+            st.warning(
+                "This removes all records from the Worker Master only. "
+                "Existing Training Records are not deleted."
+            )
+            confirm_delete_all = st.checkbox(
+                "I confirm that I want to delete all Worker Master records.",
+                key="wm_confirm_delete_all",
+            )
+            if st.button(
+                "Delete All Worker Master Records",
+                type="secondary",
+                disabled=not confirm_delete_all,
+                use_container_width=True,
+                key="wm_delete_all",
+            ):
+                try:
+                    delete_all_worker_master(user)
+                    st.success(
+                        "All Worker Master records were deleted. "
+                        "Existing Training Records were not deleted."
+                    )
+                    st.rerun()
+                except Exception as e:
+                    st.error("Unable to delete all Worker Master records.")
+                    with st.expander("Technical details"):
+                        st.exception(e)
 
 
 # ============================================================

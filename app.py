@@ -2586,12 +2586,12 @@ def render_login():
                 password = st.text_input(
                     "Password",
                     type="password",
-                    placeholder="Enter your password",
+                    placeholder="Enter password",
                 )
                 confirm = st.text_input(
                     "Confirm password",
                     type="password",
-                    placeholder="Re-enter your password",
+                    placeholder="Re-enter password",
                 )
                 submitted = st.form_submit_button(
                     "Create account",

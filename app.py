@@ -2793,11 +2793,12 @@ def render_data_entry():
             )
 
             # Load active employees from Worker Master so participant names can be suggested.
-            # If a training site is selected, only employees assigned to that site are suggested.
-            if power_plant != "Not Specified":
-                site_workers = get_worker_master(power_plant, active_only=True)
-            else:
+            # "All Plant Sites" means employees from every active site can be selected.
+            # A specific plant means only employees assigned to that plant are suggested.
+            if plant_mode == "All Plant Sites" or power_plant == "Not Specified":
                 site_workers = get_worker_master(active_only=True)
+            else:
+                site_workers = get_worker_master(power_plant, active_only=True)
 
             if not site_workers.empty:
                 worker_labels = site_workers.apply(
@@ -2849,49 +2850,13 @@ def render_data_entry():
                 placeholder="Optional — separate names with commas",
             )
         else:
-            # Keep the selected participants clearly visible.
-            # When "All Plant Sites" is selected, employees from different
-            # sites can be selected together and each employee keeps their
-            # Power Plant / Site beside their name.
-            participant_rows_html = "".join(
-                f"<div style='padding:7px 10px; border-bottom:1px solid #e5e7eb; "
-                f"color:#123b5d; font-size:15px;'>{html.escape(str(item))}</div>"
-                for item in selected_participant_details
+            st.text_area(
+                "Selected Participants",
+                value="\n".join(selected_participant_details),
+                disabled=True,
+                key="entry_master_participant_names",
+                help="Employee names are suggested from the imported Worker Master, with the Power Plant / Site shown beside each employee.",
             )
-
-            if participant_rows_html:
-                st.markdown(
-                    f"""
-                    <div style="
-                        background:#ffffff;
-                        border:1px solid #b8c9d8;
-                        border-radius:8px;
-                        min-height:58px;
-                        max-height:180px;
-                        overflow-y:auto;
-                        margin-top:4px;
-                    ">
-                        {participant_rows_html}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    """
-                    <div style="
-                        background:#ffffff;
-                        border:1px solid #b8c9d8;
-                        border-radius:8px;
-                        padding:12px;
-                        color:#6b7280;
-                        min-height:42px;
-                    ">
-                        Select participant(s) above.
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
 
         total_hours = (
             float(training_hours) * float(participants)

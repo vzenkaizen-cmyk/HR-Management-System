@@ -990,12 +990,14 @@ def ensure_worker_master_schema():
         """
         DO $$
         BEGIN
+            -- Existing production database uses worker_name.
+            -- Rename it once to employee_name so the application and database match.
             IF EXISTS (
                 SELECT 1
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
                   AND table_name = 'worker_master'
-                  AND column_name = 'employee_name'
+                  AND column_name = 'worker_name'
             )
             AND NOT EXISTS (
                 SELECT 1
@@ -1005,7 +1007,7 @@ def ensure_worker_master_schema():
                   AND column_name = 'employee_name'
             ) THEN
                 ALTER TABLE public.worker_master
-                RENAME COLUMN employee_name TO employee_name;
+                RENAME COLUMN worker_name TO employee_name;
             END IF;
         END $$;
 
@@ -1027,6 +1029,8 @@ def ensure_worker_master_schema():
             ON public.worker_master(active);
         """
     )
+
+
 def get_worker_master(site=None, active_only=True):
     conditions = []
     params = {}

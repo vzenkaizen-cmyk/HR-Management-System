@@ -287,13 +287,30 @@ div[data-baseweb="popover"] [role="option"] {
     color:#fff !important; -webkit-text-fill-color:#fff !important;
 }
 
+
+/* Login / Create Account: keep all field labels clearly visible on the dark sidebar */
+section[data-testid="stSidebar"] .stTextInput label,
+section[data-testid="stSidebar"] .stTextInput label p,
+section[data-testid="stSidebar"] .stTextArea label,
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stNumberInput label {
+    color:#fff !important;
+    -webkit-text-fill-color:#fff !important;
+}
+
 /* Sidebar */
 section[data-testid="stSidebar"] {
     background:linear-gradient(180deg,#073556 0%,#0a4772 58%,#0b507e 100%) !important;
 }
 section[data-testid="stSidebar"] .stMarkdown,
 section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] label { color:#fff !important; }
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] *,
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    color:#fff !important;
+    -webkit-text-fill-color:#fff !important;
+}
 .sidebar-logo-wrap {
     background:#fff !important;
     border-radius:14px !important;

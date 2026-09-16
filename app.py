@@ -1102,6 +1102,11 @@ def delete_worker_master(worker_id):
     )
 
 
+def delete_all_worker_master():
+    """Delete only Worker Master records; training records are not deleted."""
+    run_write("DELETE FROM public.worker_master")
+
+
 def import_worker_master_dataframe(worker_df, created_by=None):
     saved = 0
     for _, row in worker_df.iterrows():
@@ -5034,6 +5039,36 @@ def render_worker_master():
                         st.error("Unable to delete worker.")
                         with st.expander("Technical details"):
                             st.exception(e)
+
+    # Bulk removal option for clearing imported/test Worker Master data.
+    # This operates only on worker_master and does not delete training_records.
+    with st.expander("🗑️ Delete All Worker Master Records"):
+        st.warning(
+            "This removes all records from the Worker Master only. "
+            "Existing Training Records are not deleted."
+        )
+        confirm_delete_all = st.checkbox(
+            "I confirm that I want to delete all Worker Master records.",
+            key="wm_confirm_delete_all",
+        )
+        if st.button(
+            "Delete All Worker Master Records",
+            type="secondary",
+            disabled=not confirm_delete_all,
+            use_container_width=True,
+            key="wm_delete_all",
+        ):
+            try:
+                delete_all_worker_master()
+                st.success(
+                    "All Worker Master records were deleted. "
+                    "Existing Training Records were not deleted."
+                )
+                st.rerun()
+            except Exception as e:
+                st.error("Unable to delete all Worker Master records.")
+                with st.expander("Technical details"):
+                    st.exception(e)
 
 
 # ============================================================

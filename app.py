@@ -1170,8 +1170,8 @@ def prepare_worker_master_excel(uploaded_file):
 
     if header_row is None:
         raise ValueError(
-            "Could not find Worker Name and Power Plant / Site columns. "
-            "Expected columns such as Worker Name, Employee No and Power Plant / Site."
+            "Could not find Employee Name and Power Plant / Site columns. "
+            "Expected columns such as Employee Name, Employee No and Power Plant / Site."
         )
 
     records = []
@@ -4879,7 +4879,7 @@ def render_worker_master():
     with st.container(border=True):
         st.subheader("📥 Import Worker Master")
         st.caption(
-            "Excel columns: Worker Name * , Power Plant / Site * , Employee No (optional), Active (optional)."
+            "Excel columns: Employee Name * , Power Plant / Site * , Employee No (optional), Active (optional)."
         )
         uploaded_workers = st.file_uploader(
             "Choose Worker Master Excel file",
@@ -4920,7 +4920,7 @@ def render_worker_master():
         with c1:
             employee_no = st.text_input("Employee No", key="wm_employee_no")
         with c2:
-            worker_name = st.text_input("Worker Name *", key="wm_worker_name")
+            worker_name = st.text_input("Employee Name *", key="wm_worker_name")
         with c3:
             worker_site = st.selectbox(
                 "Power Plant / Site *",
@@ -4962,7 +4962,7 @@ def render_worker_master():
         display_df[["employee_no", "worker_name", "power_plant", "active"]].rename(
             columns={
                 "employee_no": "Employee No",
-                "worker_name": "Worker Name",
+                "worker_name": "Employee Name",
                 "power_plant": "Power Plant / Site",
                 "active": "Active",
             }
@@ -4992,7 +4992,7 @@ def render_worker_master():
                     key=f"wm_edit_emp_{selected_worker_id}",
                 )
                 edit_worker_name = st.text_input(
-                    "Worker Name",
+                    "Employee Name",
                     value=str(selected_row["worker_name"] or ""),
                     key=f"wm_edit_name_{selected_worker_id}",
                 )

@@ -349,7 +349,7 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page staff image — fill the entire main area */
+/* Login-page staff image — fill the entire visible main area */
 .login-staff-image {
     display:block !important;
     position:relative !important;
@@ -357,16 +357,20 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     transform:translateX(-85px) !important;
     width:calc(100% + 170px) !important;
     max-width:none !important;
+    height:calc(100vh - 120px) !important;
+    min-height:590px !important;
     margin:-105px 0 0 0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
-    overflow:visible !important;
+    overflow:hidden !important;
 }
 .login-staff-image img {
     display:block !important;
     width:100% !important;
     max-width:none !important;
-    height:auto !important;
+    height:100% !important;
+    object-fit:cover !important;
+    object-position:center center !important;
     margin:0 !important;
     padding:0 !important;
     border-radius:14px !important;

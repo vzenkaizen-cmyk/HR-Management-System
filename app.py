@@ -985,13 +985,34 @@ def ensure_training_schema():
 # ============================================================
 
 def ensure_worker_master_schema():
-    """Create the site-to-worker master without changing existing training data."""
+    """Create/migrate the Employee Master without changing existing training data."""
     run_write(
         """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'worker_master'
+                  AND column_name = 'employee_name'
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'worker_master'
+                  AND column_name = 'employee_name'
+            ) THEN
+                ALTER TABLE public.worker_master
+                RENAME COLUMN employee_name TO employee_name;
+            END IF;
+        END $$;
+
         CREATE TABLE IF NOT EXISTS public.worker_master (
             id BIGSERIAL PRIMARY KEY,
             employee_no VARCHAR(100),
-            worker_name TEXT NOT NULL,
+            employee_name TEXT NOT NULL,
             power_plant VARCHAR(255) NOT NULL,
             active BOOLEAN NOT NULL DEFAULT TRUE,
             created_by BIGINT,
@@ -1006,8 +1027,6 @@ def ensure_worker_master_schema():
             ON public.worker_master(active);
         """
     )
-
-
 def get_worker_master(site=None, active_only=True):
     conditions = []
     params = {}
@@ -1020,28 +1039,28 @@ def get_worker_master(site=None, active_only=True):
     where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = run_query(
         f"""
-        SELECT id, employee_no, worker_name, power_plant, active, created_by, created_at, updated_at
+        SELECT id, employee_no, employee_name, power_plant, active, created_by, created_at, updated_at
         FROM public.worker_master
         {where_sql}
-        ORDER BY LOWER(TRIM(worker_name)), id
+        ORDER BY LOWER(TRIM(employee_name)), id
         """,
         params,
     )
     return pd.DataFrame([dict(r) for r in rows])
 
 
-def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=True, created_by=None):
-    worker_name = str(worker_name).strip()
+def save_worker_master(worker_id, employee_no, employee_name, power_plant, active=True, created_by=None):
+    employee_name = str(employee_name).strip()
     power_plant = str(power_plant).strip()
     employee_no = str(employee_no or "").strip()
-    if not worker_name:
-        raise ValueError("Worker name is required.")
+    if not employee_name:
+        raise ValueError("Employee name is required.")
     if not power_plant:
         raise ValueError("Power Plant / Site is required.")
 
     params = {
         "employee_no": employee_no or None,
-        "worker_name": worker_name,
+        "employee_name": employee_name,
         "power_plant": power_plant,
         "active": bool(active),
         "created_by": _budget_created_by_bigint(created_by),
@@ -1052,7 +1071,7 @@ def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=
             """
             UPDATE public.worker_master
             SET employee_no = :employee_no,
-                worker_name = :worker_name,
+                employee_name = :employee_name,
                 power_plant = :power_plant,
                 active = :active,
                 updated_at = NOW()
@@ -1066,7 +1085,7 @@ def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=
         """
         SELECT id
         FROM public.worker_master
-        WHERE LOWER(TRIM(worker_name)) = LOWER(TRIM(:worker_name))
+        WHERE LOWER(TRIM(employee_name)) = LOWER(TRIM(:employee_name))
           AND LOWER(TRIM(power_plant)) = LOWER(TRIM(:power_plant))
         ORDER BY id
         LIMIT 1
@@ -1077,7 +1096,7 @@ def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=
         save_worker_master(
             int(dict(existing[0])["id"]),
             employee_no,
-            worker_name,
+            employee_name,
             power_plant,
             active,
             created_by,
@@ -1087,9 +1106,9 @@ def save_worker_master(worker_id, employee_no, worker_name, power_plant, active=
     run_write(
         """
         INSERT INTO public.worker_master
-            (employee_no, worker_name, power_plant, active, created_by)
+            (employee_no, employee_name, power_plant, active, created_by)
         VALUES
-            (:employee_no, :worker_name, :power_plant, :active, :created_by)
+            (:employee_no, :employee_name, :power_plant, :active, :created_by)
         """,
         params,
     )
@@ -1113,7 +1132,7 @@ def import_worker_master_dataframe(worker_df, created_by=None):
         save_worker_master(
             None,
             row.get("employee_no", ""),
-            row.get("worker_name", ""),
+            row.get("employee_name", ""),
             row.get("power_plant", ""),
             bool(row.get("active", True)),
             created_by,
@@ -1136,9 +1155,9 @@ def prepare_worker_master_excel(uploaded_file):
             "employee no", "employee number", "employee id", "emp no",
             "emp number", "emp id", "employee_no", "employee_id"
         ],
-        "worker_name": [
-            "worker name", "worker", "employee name", "name",
-            "employee", "worker_name", "employee_name"
+        "employee_name": [
+            "employee name", "employee", "name",
+            "worker name", "worker", "employee_name", "worker_name"
         ],
         "power_plant": [
             "power plant", "plant", "plant name", "site", "location",
@@ -1163,7 +1182,7 @@ def prepare_worker_master_excel(uploaded_file):
                 if value in [_norm(x) for x in target_aliases]:
                     found[target] = col_idx
                     break
-        if "worker_name" in found and "power_plant" in found:
+        if "employee_name" in found and "power_plant" in found:
             header_row = i
             header_map = found
             break
@@ -1177,9 +1196,9 @@ def prepare_worker_master_excel(uploaded_file):
     records = []
     for row_idx in range(header_row + 1, len(raw)):
         row = raw.iloc[row_idx]
-        worker_name = str(row.iloc[header_map["worker_name"]] if header_map["worker_name"] < len(row) else "").strip()
+        employee_name = str(row.iloc[header_map["employee_name"]] if header_map["employee_name"] < len(row) else "").strip()
         power_plant = str(row.iloc[header_map["power_plant"]] if header_map["power_plant"] < len(row) else "").strip()
-        if not worker_name or worker_name.lower() in {"total", "grand total"}:
+        if not employee_name or employee_name.lower() in {"total", "grand total"}:
             continue
         if not power_plant:
             continue
@@ -1199,7 +1218,7 @@ def prepare_worker_master_excel(uploaded_file):
         site = normalize_budget_location(power_plant) or power_plant
         records.append({
             "employee_no": employee_no,
-            "worker_name": worker_name,
+            "employee_name": employee_name,
             "power_plant": site,
             "active": active,
         })
@@ -2608,7 +2627,7 @@ def render_home():
             <div class="welcome-text">
                 Welcome back,
                 <strong>{html.escape(str(full_name))}</strong> 👋<br>
-                Manage training programmes, workers, costs,
+                Manage training programmes, employees, costs,
                 budgets, training hours and company-wide performance.
             </div>
         </div>
@@ -2673,12 +2692,12 @@ def render_home():
         )
     else:
         total_hours = float(df["calculated_total_hours"].sum())
-        total_workers = float(df["participants_count"].sum())
+        total_employees = float(df["participants_count"].sum())
         total_cost = float(df["training_cost"].sum())
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Programmes", f"{len(df):,}")
-        m2.metric("Workers Attended", f"{total_workers:,.0f}")
+        m2.metric("Employees Attended", f"{total_employees:,.0f}")
         m3.metric("Total Training Hours", f"{total_hours:,.1f}")
         m4.metric("Training Cost", f"Rs. {total_cost:,.0f}")
 
@@ -2716,10 +2735,10 @@ def render_data_entry():
             </div>
             <div class="formula-text">
                 Total Training Hours =
-                Training Hours per Worker × No. of Workers Attended
+                Training Hours per Worker × No. of Employees Attended
             </div>
             <div class="small-note">
-                Example: 3 hours × 10 workers =
+                Example: 3 hours × 10 employees =
                 30 total training hours (person-hours).
             </div>
         </div>
@@ -2806,28 +2825,28 @@ def render_data_entry():
             # Load active employees from Worker Master so participant names can be suggested.
             # Only employees assigned to the selected Power Plant / Site are suggested.
             if power_plant not in {"Not Specified", "All Plant Sites"}:
-                site_workers = get_worker_master(power_plant, active_only=True)
+                site_employees = get_worker_master(power_plant, active_only=True)
             else:
-                site_workers = get_worker_master(active_only=True)
+                site_employees = get_worker_master(active_only=True)
 
-            if not site_workers.empty:
-                worker_labels = site_workers.apply(
+            if not site_employees.empty:
+                worker_labels = site_employees.apply(
                     lambda r: (
-                        f"{str(r['worker_name']).strip()} — {str(r['power_plant']).strip()}"
+                        f"{str(r['employee_name']).strip()} — {str(r['power_plant']).strip()}"
                         + (f" ({str(r['employee_no']).strip()})" if str(r.get('employee_no') or '').strip() else "")
                     ),
                     axis=1,
                 ).tolist()
-                selected_workers = st.multiselect(
+                selected_employees = st.multiselect(
                     "Names of the Participants *",
                     worker_labels,
-                    key="entry_master_workers",
+                    key="entry_master_employees",
                     help="Select an employee from the Worker Master. The Power Plant / Site where the employee participates is shown with the name.",
                 )
 
                 selected_names = []
                 selected_participant_details = []
-                for label in selected_workers:
+                for label in selected_employees:
                     # Keep only the employee name in the existing database field.
                     name_part = label.split(" — ", 1)[0].strip()
                     name_part = name_part.split(" (", 1)[0].strip()
@@ -2835,13 +2854,13 @@ def render_data_entry():
                     selected_participant_details.append(label)
 
                 participant_names = ", ".join(selected_names)
-                participants = len(selected_workers)
+                participants = len(selected_employees)
                 st.info(
                     f"{participants:,} employee(s) selected from the {power_plant if power_plant != 'Not Specified' else 'Worker Master'}."
                 )
             else:
                 participants = st.number_input(
-                    "No. of Workers Attended *",
+                    "No. of Employees Attended *",
                     min_value=0,
                     step=1,
                     format="%d",
@@ -2879,7 +2898,7 @@ def render_data_entry():
                 format="%.2f",
             )
 
-        if site_workers.empty:
+        if site_employees.empty:
             participant_names = st.text_area(
                 "Names of the Participants",
                 placeholder="Optional — separate names with commas",
@@ -2902,7 +2921,7 @@ def render_data_entry():
             <div class='formula-box'>
                 <div class='formula-text'>
                     {training_hours:,.2f} hours ×
-                    {participants:,.1f} workers =
+                    {participants:,.1f} employees =
                     {total_hours:,.2f} total training hours
                 </div>
             </div>
@@ -2947,7 +2966,7 @@ def render_data_entry():
 
         if participants <= 0:
             st.error(
-                "No. of Workers Attended must be greater than 0."
+                "No. of Employees Attended must be greater than 0."
             )
             return
 
@@ -3002,7 +3021,7 @@ def render_import_excel():
             </div>
             <div class="formula-text">
                 Total Training Hours =
-                Training Hours per Worker × No. of Workers Attended
+                Training Hours per Worker × No. of Employees Attended
             </div>
             <div class="small-note">
                 The Excel Total Hours value is not trusted.
@@ -3129,7 +3148,7 @@ def render_import_excel():
             st.warning(
                 f"{mismatch_count} row(s) have an Excel "
                 f"Total Hours value that does not match "
-                f"Training Hours × Workers. "
+                f"Training Hours × Employees. "
                 f"The system will use the calculated value."
             )
 
@@ -3533,7 +3552,7 @@ def render_dashboard():
             # training_cost is stored for the whole training programme.
             # Therefore the participant's actual allocated cost is:
             #
-            #     Training Cost ÷ No. of Workers Attended
+            #     Training Cost ÷ No. of Employees Attended
             #
             # This keeps the original database values unchanged and only
             # calculates the participant's share for this dashboard view.
@@ -3604,7 +3623,7 @@ def render_dashboard():
             )
 
             st.caption(
-                "Participant Cost = Total Training Cost ÷ Workers Attended "
+                "Participant Cost = Total Training Cost ÷ Employees Attended "
                 "for each training record. The participant cost shown below "
                 "is the sum of that allocated share."
             )
@@ -3793,7 +3812,7 @@ def render_dashboard():
             st.warning("No records match the selected filters.")
     else:
         # For a participant view, each programme's actual cost is allocated
-        # to that participant as Training Cost / Workers Attended.
+        # to that participant as Training Cost / Employees Attended.
         if participant_search.strip():
             dashboard_source["dashboard_actual_cost"] = (
                 dashboard_source["training_cost"]
@@ -3822,7 +3841,7 @@ def render_dashboard():
                 dashboard_source["calculated_total_hours"].sum()
             )
         programmes = int(len(dashboard_source))
-        workers = float(
+        employees = float(
             dashboard_source["participants_count"].sum()
         )
         total_cost = float(
@@ -3833,14 +3852,14 @@ def render_dashboard():
             total_hours / programmes if programmes else 0
         )
         avg_hours_per_worker = (
-            total_hours / workers if workers else 0
+            total_hours / employees if employees else 0
         )
 
         st.write("")
 
         k1, k2, k3 = st.columns(3, gap="medium")
         k1.metric("Training Programmes", f"{programmes:,}")
-        k2.metric("Workers Attended", f"{workers:,.0f}")
+        k2.metric("Employees Attended", f"{employees:,.0f}")
         k3.metric("Total Training Hours", f"{total_hours:,.1f}")
 
         st.write("")
@@ -3854,7 +3873,7 @@ def render_dashboard():
 
         # When a participant is searched, the charts below use only that
         # participant's matched records. Participant actual cost is allocated
-        # per training record as Training Cost / Workers Attended.
+        # per training record as Training Cost / Employees Attended.
         chart_source = dashboard_source.copy()
         participant_chart_active = bool(participant_search.strip())
 
@@ -4086,7 +4105,7 @@ def render_dashboard():
 
         # The Budget is not participant-specific. The Actual is participant-
         # specific when Search Participant is used, using the same allocation
-        # rule as the participant summary: Training Cost / Workers Attended.
+        # rule as the participant summary: Training Cost / Employees Attended.
         if participant_search.strip():
             if participant_filtered.empty:
                 selected_actual_total = 0.0
@@ -4311,7 +4330,7 @@ def render_dashboard():
                 "Trainer",
                 "Plant Site",
                 "Hours / Worker",
-                "Workers",
+                "Employees",
                 "Total Training Hours",
                 "Training Cost (Rs.)",
             ]
@@ -4529,7 +4548,7 @@ def render_records():
         "Trainer",
         "Plant Site",
         "Hours / Worker",
-        "Workers",
+        "Employees",
         "Total Training Hours",
         "Cost (Rs.)",
     ]
@@ -4718,7 +4737,7 @@ def render_records():
             )
 
             participants = st.number_input(
-                "Workers Attended",
+                "Employees Attended",
                 min_value=0,
                 value=int(
                     round(
@@ -4790,7 +4809,7 @@ def render_records():
                     or participants <= 0
                 ):
                     st.error(
-                        "Training Hours and Workers Attended "
+                        "Training Hours and Employees Attended "
                         "must be greater than 0."
                     )
                 else:
@@ -4872,8 +4891,8 @@ def render_worker_master():
 
     st.title("Worker Master")
     st.caption(
-        "Maintain one master list of workers and assign each worker to a Power Plant / Site. "
-        "When entering training data, only workers assigned to the selected site are shown."
+        "Maintain one master list of employees and assign each worker to a Power Plant / Site. "
+        "When entering training data, only employees assigned to the selected site are shown."
     )
 
     with st.container(border=True):
@@ -4881,16 +4900,16 @@ def render_worker_master():
         st.caption(
             "Excel columns: Employee Name * , Power Plant / Site * , Employee No (optional), Active (optional)."
         )
-        uploaded_workers = st.file_uploader(
+        uploaded_employees = st.file_uploader(
             "Choose Worker Master Excel file",
             type=["xlsx", "xls", "csv"],
             key="worker_master_upload",
         )
-        if uploaded_workers is not None:
+        if uploaded_employees is not None:
             try:
-                worker_preview, worker_header = prepare_worker_master_excel(uploaded_workers)
+                worker_preview, worker_header = prepare_worker_master_excel(uploaded_employees)
                 st.success(
-                    f"File loaded successfully — {len(worker_preview):,} workers detected. "
+                    f"File loaded successfully — {len(worker_preview):,} employees detected. "
                     f"Header row: {worker_header}."
                 )
                 if not worker_preview.empty:
@@ -4920,7 +4939,7 @@ def render_worker_master():
         with c1:
             employee_no = st.text_input("Employee No", key="wm_employee_no")
         with c2:
-            worker_name = st.text_input("Employee Name *", key="wm_worker_name")
+            employee_name = st.text_input("Employee Name *", key="wm_employee_name")
         with c3:
             worker_site = st.selectbox(
                 "Power Plant / Site *",
@@ -4934,7 +4953,7 @@ def render_worker_master():
         if st.button("Add / Update Worker", type="primary", use_container_width=True, key="wm_save"):
             try:
                 save_worker_master(
-                    None, employee_no, worker_name, worker_site, active, (user or {}).get("id")
+                    None, employee_no, employee_name, worker_site, active, (user or {}).get("id")
                 )
                 st.success("Worker Master updated successfully.")
                 st.rerun()
@@ -4944,7 +4963,7 @@ def render_worker_master():
     worker_df = get_worker_master(active_only=False)
     st.subheader("Worker Master List")
     if worker_df.empty:
-        st.info("No workers have been added yet. Import your Worker Master Excel file above.")
+        st.info("No employees have been added yet. Import your Worker Master Excel file above.")
         return
 
     site_filter = st.selectbox(
@@ -4959,10 +4978,10 @@ def render_worker_master():
         ].copy()
 
     st.dataframe(
-        display_df[["employee_no", "worker_name", "power_plant", "active"]].rename(
+        display_df[["employee_no", "employee_name", "power_plant", "active"]].rename(
             columns={
                 "employee_no": "Employee No",
-                "worker_name": "Employee Name",
+                "employee_name": "Employee Name",
                 "power_plant": "Power Plant / Site",
                 "active": "Active",
             }
@@ -4973,7 +4992,7 @@ def render_worker_master():
 
     with st.expander("Edit / Remove Worker"):
         worker_options = {
-            int(row["id"]): f"{row['worker_name']} — {row['power_plant']}"
+            int(row["id"]): f"{row['employee_name']} — {row['power_plant']}"
             for _, row in display_df.iterrows()
         }
         if worker_options:
@@ -4991,9 +5010,9 @@ def render_worker_master():
                     value=str(selected_row["employee_no"] or ""),
                     key=f"wm_edit_emp_{selected_worker_id}",
                 )
-                edit_worker_name = st.text_input(
+                edit_employee_name = st.text_input(
                     "Employee Name",
-                    value=str(selected_row["worker_name"] or ""),
+                    value=str(selected_row["employee_name"] or ""),
                     key=f"wm_edit_name_{selected_worker_id}",
                 )
             with e2:
@@ -5020,7 +5039,7 @@ def render_worker_master():
                         save_worker_master(
                             selected_worker_id,
                             edit_employee_no,
-                            edit_worker_name,
+                            edit_employee_name,
                             edit_site,
                             edit_active,
                             (user or {}).get("id"),

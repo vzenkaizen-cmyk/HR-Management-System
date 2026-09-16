@@ -4435,6 +4435,231 @@ def render_dashboard():
                     f"{financial_year_total_hours:,.1f} total training hours."
                 )
 
+        # ------------------------------------------------------------
+        # YEAR-WISE PERCENTAGES
+        # ------------------------------------------------------------
+        # Additional percentage view requested by the user.
+        # Nothing above is removed or replaced.
+        #
+        # For every financial year:
+        #   Budget % = budget represented by the current dashboard filters
+        #              / complete budget for that financial year
+        #
+        #   Training Hours % = training hours represented by the current
+        #                      dashboard filters / complete total hours for
+        #                      that financial year
+        #
+        # The Year filter is intentionally not applied inside these two
+        # calculations so that, when All Years is selected, every year can
+        # be displayed separately. If a specific year is selected, only that
+        # selected year's percentage is shown.
+        # ------------------------------------------------------------
+
+        # ---------- Budget percentage for each financial year ----------
+        # Numerator = the budget represented by the current Location and
+        # Category filters for that year.
+        # Denominator = the complete budget for that financial year.
+        # This makes the percentage meaningful (for example, a selected
+        # site's/category's budget can be shown as 12.5% of the full FY budget).
+        yearwise_budget_selected = budget_df.copy()
+
+        if selected_location != "All Locations":
+            yearwise_budget_selected = yearwise_budget_selected[
+                yearwise_budget_selected["location"].astype(str).str.strip()
+                == selected_location
+            ].copy()
+
+        if selected_category != "All Categories":
+            yearwise_budget_selected = yearwise_budget_selected[
+                yearwise_budget_selected["category"] == selected_category
+            ].copy()
+
+        yearwise_budget_total = budget_df.copy()
+
+        available_budget_years = sorted(
+            yearwise_budget_total["budget_year"].dropna().unique().tolist()
+        )
+
+        if selected_year != "All Years":
+            available_budget_years = [
+                y for y in available_budget_years
+                if int(y) == int(selected_year)
+            ]
+
+        yearwise_budget_rows = []
+
+        for fy in available_budget_years:
+            fy_total_budget = float(
+                yearwise_budget_total.loc[
+                    yearwise_budget_total["budget_year"] == fy,
+                    "budget_amount",
+                ].sum()
+            )
+
+            fy_selected_budget = float(
+                yearwise_budget_selected.loc[
+                    yearwise_budget_selected["budget_year"] == fy,
+                    "budget_amount",
+                ].sum()
+            )
+
+            fy_budget_pct = (
+                (fy_selected_budget / fy_total_budget) * 100
+                if fy_total_budget > 0
+                else 0
+            )
+
+            yearwise_budget_rows.append(
+                {
+                    "Financial Year": int(fy),
+                    "Percentage": fy_budget_pct,
+                    "Selected": fy_selected_budget,
+                    "Total": fy_total_budget,
+                }
+            )
+
+        # ---------- Training-hours percentage for each financial year ----------
+        yearwise_hours_base = df.copy()
+
+        if selected_location != "All Locations":
+            yearwise_hours_base = yearwise_hours_base[
+                yearwise_hours_base["power_plant"].astype(str).str.strip()
+                == selected_location
+            ].copy()
+
+        if selected_category != "All Categories":
+            yearwise_hours_base = yearwise_hours_base[
+                yearwise_hours_base["category"] == selected_category
+            ].copy()
+
+        if selected_quarter != "All Quarters":
+            yearwise_hours_base = yearwise_hours_base[
+                yearwise_hours_base["quarter"] == selected_quarter
+            ].copy()
+
+        if selected_type != "All Types":
+            yearwise_hours_base = yearwise_hours_base[
+                yearwise_hours_base["training_type"] == selected_type
+            ].copy()
+
+        if month_number is not None:
+            yearwise_hours_base = yearwise_hours_base[
+                yearwise_hours_base["from_date"].dt.month == int(month_number)
+            ].copy()
+
+        yearwise_hours_base["financial_year"] = (
+            yearwise_hours_base["from_date"].dt.year
+        )
+
+        # The denominator is the full total for each financial year.
+        # It uses the same Location/Category context but does not apply the
+        # Year filter or the additional time/type filters.
+        yearwise_hours_total_base = df.copy()
+
+        if selected_location != "All Locations":
+            yearwise_hours_total_base = yearwise_hours_total_base[
+                yearwise_hours_total_base["power_plant"].astype(str).str.strip()
+                == selected_location
+            ].copy()
+
+        if selected_category != "All Categories":
+            yearwise_hours_total_base = yearwise_hours_total_base[
+                yearwise_hours_total_base["category"] == selected_category
+            ].copy()
+
+        yearwise_hours_total_base["financial_year"] = (
+            yearwise_hours_total_base["from_date"].dt.year
+        )
+
+        total_hours_by_year = (
+            yearwise_hours_total_base.groupby("financial_year")[
+                "calculated_total_hours"
+            ]
+            .sum()
+            .to_dict()
+        )
+
+        selected_hours_by_year = (
+            yearwise_hours_base.groupby("financial_year")[
+                "calculated_total_hours"
+            ]
+            .sum()
+            .to_dict()
+        )
+
+        available_hours_years = sorted(total_hours_by_year.keys())
+
+        if selected_year != "All Years":
+            available_hours_years = [
+                y for y in available_hours_years
+                if int(y) == int(selected_year)
+            ]
+
+        # ---------- Display: Budget percentage ----------
+        st.subheader("📊 Budget Percentage by Financial Year")
+
+        if not yearwise_budget_rows:
+            st.info("No financial-year budget data available.")
+        else:
+            budget_cols = st.columns(
+                min(len(yearwise_budget_rows), 4),
+                gap="medium",
+            )
+
+            for idx, row in enumerate(yearwise_budget_rows):
+                with budget_cols[idx % len(budget_cols)]:
+                    with st.container(border=True):
+                        st.metric(
+                            f"FY {row['Financial Year']} Budget %",
+                            f"{row['Percentage']:,.1f}%",
+                        )
+                        st.progress(
+                            min(max(row["Percentage"] / 100, 0.0), 1.0),
+                            text=f"{row['Percentage']:,.1f}% of FY total",
+                        )
+                        st.caption(
+                            f"Rs. {row['Selected']:,.0f} represented "
+                            f"out of Rs. {row['Total']:,.0f} total budget."
+                        )
+
+        # ---------- Display: Training-hours percentage ----------
+        st.subheader("📊 Training Hours Percentage by Financial Year")
+
+        if not available_hours_years:
+            st.info("No financial-year training-hour data available.")
+        else:
+            hours_cols = st.columns(
+                min(len(available_hours_years), 4),
+                gap="medium",
+            )
+
+            for idx, fy in enumerate(available_hours_years):
+                with hours_cols[idx % len(hours_cols)]:
+                    fy_total_hours = float(total_hours_by_year.get(fy, 0.0))
+                    fy_selected_hours = float(
+                        selected_hours_by_year.get(fy, 0.0)
+                    )
+
+                    fy_hours_pct = (
+                        (fy_selected_hours / fy_total_hours) * 100
+                        if fy_total_hours > 0
+                        else 0
+                    )
+
+                    with st.container(border=True):
+                        st.metric(
+                            f"FY {int(fy)} Training Hours %",
+                            f"{fy_hours_pct:,.1f}%",
+                        )
+                        st.progress(
+                            min(max(fy_hours_pct / 100, 0.0), 1.0),
+                            text=f"{fy_hours_pct:,.1f}% of FY total",
+                        )
+                        st.caption(
+                            f"{fy_selected_hours:,.1f} selected hours "
+                            f"out of {fy_total_hours:,.1f} total hours."
+                        )
+
         # Budget vs Actual graph uses the same top selections.
         plant_category_df = pd.DataFrame(
             {

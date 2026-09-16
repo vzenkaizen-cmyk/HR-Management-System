@@ -366,6 +366,15 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
+/* Keep account-form placeholder examples fully visible in the narrow sidebar. */
+section[data-testid="stSidebar"] input::placeholder {
+    color:#173f5c !important;
+    -webkit-text-fill-color:#173f5c !important;
+    opacity:1 !important;
+    font-size:13px !important;
+    letter-spacing:0 !important;
+}
+
 /* Login-page staff image — fixed to the visible main area.
    It stays in exactly the same position while the page is scrolled. */
 .login-staff-image {
@@ -2586,7 +2595,7 @@ def render_login():
                 password = st.text_input(
                     "Password",
                     type="password",
-                    placeholder="Password",
+                    placeholder="Enter password",
                 )
                 confirm = st.text_input(
                     "Confirm password",

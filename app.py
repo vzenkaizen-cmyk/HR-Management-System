@@ -4337,10 +4337,25 @@ def render_dashboard():
                 f"{selected_budget_total:,.0f} total budget • "
                 f"Remaining: Rs. {selected_variance:,.0f}"
             )
-            st.caption(
-                f"{financial_year_budget_percentage:,.1f}% of {financial_year_label} total budget "
-                f"(Rs. {financial_year_total_budget:,.0f})"
-            )
+        
+        # Separate Financial-Year Budget Percentage
+        # This is intentionally displayed as its own percentage card,
+        # rather than being added to the existing budget progress section.
+        with st.container(border=True):
+            fyb1, fyb2 = st.columns([1.2, 2.8], gap="large")
+            with fyb1:
+                st.metric(
+                    "Financial Year Budget %",
+                    f"{financial_year_budget_percentage:,.1f}%",
+                )
+            with fyb2:
+                st.markdown(
+                    f"**Selected budget as % of {financial_year_label} total budget**"
+                )
+                st.caption(
+                    f"Rs. {selected_budget_total:,.0f} selected from "
+                    f"Rs. {financial_year_total_budget:,.0f} total budget."
+                )
 
         # ------------------------------------------------------------
         # TOTAL TRAINING HOURS SUMMARY
@@ -4400,10 +4415,25 @@ def render_dashboard():
                 f"{selected_training_hours:,.1f} selected hours out of "
                 f"{all_training_hours:,.1f} total training hours."
             )
-            st.caption(
-                f"{financial_year_hours_percentage:,.1f}% of {financial_year_label} total training hours "
-                f"({financial_year_total_hours:,.1f} hours)"
-            )
+        
+        # Separate Financial-Year Training Hours Percentage
+        # This is intentionally displayed as its own percentage card,
+        # separate from the existing training-hours progress section.
+        with st.container(border=True):
+            fyh1, fyh2 = st.columns([1.2, 2.8], gap="large")
+            with fyh1:
+                st.metric(
+                    "Financial Year Training Hours %",
+                    f"{financial_year_hours_percentage:,.1f}%",
+                )
+            with fyh2:
+                st.markdown(
+                    f"**Selected training hours as % of {financial_year_label} total hours**"
+                )
+                st.caption(
+                    f"{selected_training_hours:,.1f} selected hours from "
+                    f"{financial_year_total_hours:,.1f} total training hours."
+                )
 
         # Budget vs Actual graph uses the same top selections.
         plant_category_df = pd.DataFrame(

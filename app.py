@@ -2576,7 +2576,7 @@ def render_login():
                 with name_col2:
                     last_name = st.text_input(
                         "Last name",
-                        placeholder="e.g. Perera",
+                        placeholder="Perera",
                     )
 
                 email = st.text_input(
@@ -2586,12 +2586,12 @@ def render_login():
                 password = st.text_input(
                     "Password",
                     type="password",
-                    placeholder="Enter password",
+                    placeholder="Password",
                 )
                 confirm = st.text_input(
                     "Confirm password",
                     type="password",
-                    placeholder="Re-enter password",
+                    placeholder="Confirm",
                 )
                 submitted = st.form_submit_button(
                     "Create account",

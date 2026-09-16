@@ -349,20 +349,25 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     -webkit-text-fill-color:#ffffff !important;
 }
 
-/* Login-page staff image — fill the entire visible main area */
+/* Login-page staff image — fixed to the visible main area.
+   It stays in exactly the same position while the page is scrolled. */
 .login-staff-image {
     display:block !important;
-    position:relative !important;
-    left:auto !important;
-    transform:translateX(-85px) !important;
-    width:calc(100% + 170px) !important;
+    position:fixed !important;
+    top:0 !important;
+    bottom:0 !important;
+    left:21rem !important;
+    right:0 !important;
+    width:auto !important;
     max-width:none !important;
-    height:calc(100vh - 120px) !important;
-    min-height:590px !important;
-    margin:-105px 0 0 0 !important;
+    height:100vh !important;
+    min-height:0 !important;
+    margin:0 !important;
     padding:0 !important;
     box-sizing:border-box !important;
     overflow:hidden !important;
+    z-index:1 !important;
+    pointer-events:none !important;
 }
 .login-staff-image img {
     display:block !important;
@@ -373,8 +378,23 @@ section[data-testid="stSidebar"] button[role="tab"] * {
     object-position:center center !important;
     margin:0 !important;
     padding:0 !important;
-    border-radius:14px !important;
-    box-shadow:0 6px 22px rgba(0,0,0,.10) !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+}
+
+/* Remove the normal Streamlit markdown spacing around the fixed image. */
+div:has(> .login-staff-image) {
+    margin:0 !important;
+    padding:0 !important;
+    min-height:0 !important;
+    height:0 !important;
+}
+
+/* Keep the image aligned with the sidebar on smaller screens. */
+@media (max-width: 900px) {
+    .login-staff-image {
+        left:0 !important;
+    }
 }
 
 section[data-testid="stSidebar"] .stButton > button {

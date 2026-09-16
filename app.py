@@ -2567,14 +2567,18 @@ def render_login():
             )
 
             with st.form("signup_form"):
-                full_name = st.text_input(
-                    "Name with initials",
-                    placeholder="e.g. ABC Perera",
-                )
-                username = st.text_input(
-                    "First name",
-                    placeholder="e.g. ABC",
-                )
+                name_col1, name_col2 = st.columns(2)
+                with name_col1:
+                    first_name = st.text_input(
+                        "First name",
+                        placeholder="e.g. ABC",
+                    )
+                with name_col2:
+                    last_name = st.text_input(
+                        "Last name",
+                        placeholder="e.g. Perera",
+                    )
+
                 email = st.text_input(
                     "Email",
                     placeholder="e.g. firstname@company.com",
@@ -2596,18 +2600,26 @@ def render_login():
                 )
 
             if submitted:
-                full_name = full_name.strip()
-                username = username.strip().lower()
+                first_name = first_name.strip()
+                last_name = last_name.strip()
                 email = email.strip().lower()
 
-                if not full_name:
-                    st.error("Please enter your full name.")
+                # Keep the existing authentication/database structure.
+                # The username is generated automatically from the email
+                # so users do not have to enter a separate username.
+                username = email.split("@", 1)[0].strip().lower()
+                full_name = f"{first_name} {last_name}".strip()
+
+                if not first_name:
+                    st.error("Please enter your first name.")
+                elif not last_name:
+                    st.error("Please enter your last name.")
                 elif not re.fullmatch(
                     r"[a-z0-9._-]{3,50}", username
                 ):
                     st.error(
-                        "Username must contain 3–50 lowercase "
-                        "letters, numbers, dots, underscores or hyphens."
+                        "The email address must contain a valid username part "
+                        "before @."
                     )
                 elif not re.fullmatch(
                     r"[^@\s]+@[^@\s]+\.[^@\s]+", email

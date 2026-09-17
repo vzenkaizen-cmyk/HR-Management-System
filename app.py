@@ -4332,17 +4332,17 @@ def render_dashboard():
         # Streamlit.
         selected_training_hours = float(total_hours)
 
-        # Overall training-hour denominator across all financial years.
-        # Keep this independent of the currently selected financial year
-        # so the utilization percentage remains a meaningful share of
-        # the overall training-hour total.
-        all_training_hours = float(
-            df["calculated_total_hours"].sum()
+        # Training-hour denominator follows the current dashboard filters
+        # (Financial Year / Type / Quarter / Category / Month / Site), but
+        # does not apply the participant search. This makes a selected
+        # participant's hours a percentage of the relevant period total.
+        filtered_training_hours_total = float(
+            filtered["calculated_total_hours"].sum()
         )
 
         training_hours_utilization = (
-            (selected_training_hours / all_training_hours) * 100
-            if all_training_hours > 0
+            (selected_training_hours / filtered_training_hours_total) * 100
+            if filtered_training_hours_total > 0
             else 0
         )
 
@@ -4358,7 +4358,7 @@ def render_dashboard():
 
         if selected_year != "All Years":
             selected_financial_year = int(selected_year)
-            per_head_total_hours = float(financial_year_total_hours)
+            per_head_total_hours = float(filtered_training_hours_total)
             per_head_employee_count = int(
                 employee_count_by_year.get(selected_financial_year, 0)
             )
@@ -4370,9 +4370,7 @@ def render_dashboard():
                 else 0
             )
         else:
-            per_head_total_hours = float(
-                df["calculated_total_hours"].sum()
-            )
+            per_head_total_hours = float(filtered_training_hours_total)
             per_head_employee_count = sum(employee_count_by_year.values())
             per_head_label = "All Financial Years"
 
@@ -4445,7 +4443,7 @@ def render_dashboard():
                         Selected / Total Training Hours
                     </div>
                     <div style="font-size:21px;color:#0b3558;white-space:nowrap;overflow:hidden;">
-                        {selected_training_hours:,.1f} &nbsp;/&nbsp; {all_training_hours:,.1f} hours
+                        {selected_training_hours:,.1f} &nbsp;/&nbsp; {filtered_training_hours_total:,.1f} hours
                     </div>
                 </div>
                 """,
@@ -4462,7 +4460,7 @@ def render_dashboard():
             )
             st.caption(
                 f"{selected_training_hours:,.1f} selected hours out of "
-                f"{all_training_hours:,.1f} total training hours."
+                f"{filtered_training_hours_total:,.1f} total training hours."
             )
         
         # Training Hours per Employee for the respective financial year.

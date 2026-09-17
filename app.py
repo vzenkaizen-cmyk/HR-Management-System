@@ -4339,7 +4339,7 @@ def render_dashboard():
         # Keep this section independent from the existing cards/charts.
         # The wider first column prevents the full budget figures from
         # being clipped, especially for large Rs. amounts.
-        st.subheader("💰 Total Training Budget")
+        st.subheader(f"💰 Total Training Budget ({financial_year_label})")
         tb1, tb2 = st.columns([2.25, 2.75], gap="large")
 
         with tb1:
@@ -4373,149 +4373,7 @@ def render_dashboard():
                 f"Remaining: Rs. {selected_variance:,.0f}"
             )
         
-        # Separate Financial-Year Budget Percentage
-        # This is intentionally displayed as its own percentage card,
-        # rather than being added to the existing budget progress section.
-        with st.container(border=True):
-            fyb1, fyb2 = st.columns([1.2, 2.8], gap="large")
-            with fyb1:
-                st.metric(
-                    "Financial Year Budget %",
-                    (
-                        f"{financial_year_budget_percentage:,.1f}%"
-                        if financial_year_budget_percentage is not None
-                        else "—"
-                    ),
-                )
-            with fyb2:
-                if financial_year_budget_percentage is not None:
-                    st.markdown(
-                        f"**{financial_year_label} budget as % of total training budget**"
-                    )
-                    st.caption(
-                        f"Rs. {financial_year_total_budget:,.0f} for {financial_year_label} "
-                        f"out of Rs. {total_training_budget_all_years:,.0f} total training budget."
-                    )
-                else:
-                    st.markdown(
-                        "**Select a financial year to see its share of the total training budget**"
-                    )
-                    st.caption(
-                        f"Total training budget across all financial years: "
-                        f"Rs. {total_training_budget_all_years:,.0f}."
-                    )
-
-        # ------------------------------------------------------------
-        # TOTAL TRAINING HOURS SUMMARY
-        # Mirrors the budget summary above, using total person-hours.
-        # The percentage shows the selected/filter-matched training hours
-        # as a share of all training hours in the current dataset.
-        # ------------------------------------------------------------
-        selected_training_hours = float(
-            dashboard_source["calculated_total_hours"].sum()
-        ) if "calculated_total_hours" in dashboard_source.columns else 0.0
-        all_training_hours = float(
-            df["calculated_total_hours"].sum()
-        ) if "calculated_total_hours" in df.columns else 0.0
-        training_hours_utilization = (
-            (selected_training_hours / all_training_hours) * 100
-            if all_training_hours > 0
-            else 0
-        )
-
-        # ------------------------------------------------------------
-        # PARTICIPANT / FINANCIAL-YEAR TRAINING-HOURS PERCENTAGE
-        # ------------------------------------------------------------
-        # Without a participant filter, show the selected financial year's
-        # total training hours as a percentage of the total training hours
-        # across all three financial years.
-        #
-        # With a participant selected, show that participant's total hours
-        # as a percentage of the selected financial year's total hours.
-        if participant_search.strip():
-            participant_year_hours = float(
-                participant_filtered["training_hours"].sum()
-            )
-            participant_year_total_hours = float(
-                financial_year_total_hours
-            )
-            financial_year_hours_percentage = (
-                (participant_year_hours / participant_year_total_hours) * 100
-                if participant_year_total_hours > 0
-                else 0
-            )
-        else:
-            participant_year_hours = float(
-                financial_year_total_hours
-            )
-
-            # Total training hours across all available financial years,
-            # independent of Year/Quarter/Month filters. Location and
-            # Category are retained so the percentage follows those filters.
-            fy_hours_all_years_df = df.copy()
-
-            if selected_location != "All Locations":
-                fy_hours_all_years_df = fy_hours_all_years_df[
-                    fy_hours_all_years_df["power_plant"].astype(str).str.strip()
-                    == selected_location
-                ].copy()
-
-            if selected_category != "All Categories":
-                fy_hours_all_years_df = fy_hours_all_years_df[
-                    fy_hours_all_years_df["category"] == selected_category
-                ].copy()
-
-            participant_year_total_hours = float(
-                fy_hours_all_years_df["calculated_total_hours"].sum()
-            )
-
-            financial_year_hours_percentage = (
-                (participant_year_hours / participant_year_total_hours) * 100
-                if participant_year_total_hours > 0
-                else 0
-            )
-
-        # Total employee counts for each respective financial year.
-        annual_employee_counts = {
-            2026: 237,
-            2025: 274,
-            2024: 271,
-        }
-
-        if selected_year != "All Years":
-            per_head_year = int(selected_year)
-            per_head_employee_count = annual_employee_counts.get(
-                per_head_year, 0
-            )
-            # Use the complete training-hour total for the selected
-            # financial year, rather than Quarter/Month/Type filters.
-            per_head_total_hours = float(
-                financial_year_total_hours
-            )
-            training_hours_per_employee = (
-                per_head_total_hours / per_head_employee_count
-                if per_head_employee_count > 0
-                else 0
-            )
-            per_head_label = f"FY {per_head_year}"
-        else:
-            # For All Years, use the supplied annual employee counts:
-            # FY 2026 = 237, FY 2025 = 274, FY 2024 = 271.
-            total_known_employee_count = sum(
-                annual_employee_counts.values()
-            )
-            per_head_total_hours = float(
-                df["calculated_total_hours"].sum()
-            )
-            per_head_employee_count = total_known_employee_count
-            training_hours_per_employee = (
-                per_head_total_hours / per_head_employee_count
-                if per_head_employee_count > 0
-                else 0
-            )
-            per_head_label = "All Financial Years"
-
-        st.subheader("⏱️ Total Training Hours")
+        st.subheader(f"⏱️ Total Training Hours ({financial_year_label})")
         th1, th2 = st.columns([2.25, 2.75], gap="large")
 
         with th1:

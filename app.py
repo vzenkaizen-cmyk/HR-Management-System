@@ -4527,38 +4527,6 @@ def render_dashboard():
                 f"{all_training_hours:,.1f} total training hours."
             )
         
-        # Separate Financial-Year Training Hours Percentage
-        # When a participant is searched, this shows that participant's
-        # training hours as a percentage of the total training hours.
-        with st.container(border=True):
-            fyh1, fyh2 = st.columns([1.2, 2.8], gap="large")
-            with fyh1:
-                st.metric(
-                    "Financial Year Training Hours %",
-                    f"{financial_year_hours_percentage:,.1f}%",
-                )
-            with fyh2:
-                if participant_search.strip():
-                    st.markdown(
-                        f"**{participant_search.strip()} training hours as % of "
-                        f"{financial_year_label} total hours**"
-                    )
-                    st.caption(
-                        f"{participant_year_hours:,.1f} participant hours out of "
-                        f"{participant_year_total_hours:,.1f} total "
-                        f"{financial_year_label} training hours."
-                    )
-                else:
-                    st.markdown(
-                        f"**{financial_year_label} training hours as % of "
-                        f"total training hours**"
-                    )
-                    st.caption(
-                        f"{participant_year_hours:,.1f} {financial_year_label} "
-                        f"training hours out of {participant_year_total_hours:,.1f} "
-                        f"total training hours across all financial years."
-                    )
-
         # Training Hours per Employee for the respective financial year.
         with st.container(border=True):
             ph1, ph2 = st.columns([1.2, 2.8], gap="large")

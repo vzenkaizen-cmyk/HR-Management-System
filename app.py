@@ -4309,11 +4309,19 @@ def render_dashboard():
 
             financial_year_label = "All Financial Years"
 
-        financial_year_budget_percentage = (
-            (selected_budget_total / total_training_budget_all_years) * 100
-            if total_training_budget_all_years > 0
-            else 0
-        )
+        # Financial Year Budget %:
+        # Numerator = the selected financial year's budget.
+        # Denominator = the total training budget across all financial years.
+        # When "All Years" is selected there is no single-year numerator,
+        # so the card shows a dash instead of a misleading 100%.
+        if selected_year != "All Years":
+            financial_year_budget_percentage = (
+                (financial_year_total_budget / total_training_budget_all_years) * 100
+                if total_training_budget_all_years > 0
+                else 0
+            )
+        else:
+            financial_year_budget_percentage = None
 
         # Required Budget / Actual / Variance / Utilization cards.
         st.subheader(
@@ -4373,16 +4381,29 @@ def render_dashboard():
             with fyb1:
                 st.metric(
                     "Financial Year Budget %",
-                    f"{financial_year_budget_percentage:,.1f}%",
+                    (
+                        f"{financial_year_budget_percentage:,.1f}%"
+                        if financial_year_budget_percentage is not None
+                        else "—"
+                    ),
                 )
             with fyb2:
-                st.markdown(
-                    f"**{financial_year_label} budget as % of total training budget**"
-                )
-                st.caption(
-                    f"Rs. {selected_budget_total:,.0f} for {financial_year_label} out of "
-                    f"Rs. {total_training_budget_all_years:,.0f} total training budget."
-                )
+                if financial_year_budget_percentage is not None:
+                    st.markdown(
+                        f"**{financial_year_label} budget as % of total training budget**"
+                    )
+                    st.caption(
+                        f"Rs. {financial_year_total_budget:,.0f} for {financial_year_label} "
+                        f"out of Rs. {total_training_budget_all_years:,.0f} total training budget."
+                    )
+                else:
+                    st.markdown(
+                        "**Select a financial year to see its share of the total training budget**"
+                    )
+                    st.caption(
+                        f"Total training budget across all financial years: "
+                        f"Rs. {total_training_budget_all_years:,.0f}."
+                    )
 
         # ------------------------------------------------------------
         # TOTAL TRAINING HOURS SUMMARY

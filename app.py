@@ -3945,6 +3945,144 @@ def render_dashboard():
 
         st.write("")
 
+        # ------------------------------------------------------------
+        # FILTERED TRAINING PROGRAMME DETAILS
+        # ------------------------------------------------------------
+        # Show the actual records represented by the active dashboard
+        # filters. This table updates automatically whenever Location,
+        # Year, Quarter, Training Type, Category, Month, or Participant
+        # Search changes.
+        #
+        # When no participant is searched, dashboard_source contains the
+        # records matching the six dashboard filters. When a participant
+        # is searched, it additionally contains only that participant's
+        # matching records.
+        # ------------------------------------------------------------
+        st.subheader("Training Programme Details")
+        st.caption(
+            f"Showing {len(dashboard_source):,} training programme(s) "
+            "matching the current dashboard filters."
+        )
+
+        programme_details = dashboard_source.copy()
+
+        programme_details["From Date"] = pd.to_datetime(
+            programme_details["from_date"], errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
+        programme_details["To Date"] = pd.to_datetime(
+            programme_details["to_date"], errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
+
+        programme_details["Employees Attended"] = programme_details[
+            "participants_count"
+        ]
+
+        programme_details["Training Hours"] = programme_details[
+            "training_hours"
+        ]
+
+        programme_details["Total Training Hours"] = programme_details[
+            "calculated_total_hours"
+        ]
+
+        programme_details["Training Cost (Rs.)"] = programme_details[
+            "training_cost"
+        ]
+
+        programme_details = programme_details[
+            [
+                "programme_name",
+                "From Date",
+                "To Date",
+                "quarter",
+                "training_type",
+                "category",
+                "trainer_name",
+                "power_plant",
+                "Employees Attended",
+                "Training Hours",
+                "Total Training Hours",
+                "Training Cost (Rs.)",
+            ]
+        ].copy()
+
+        programme_details.columns = [
+            "Programme",
+            "From Date",
+            "To Date",
+            "Quarter",
+            "Training Type",
+            "Category",
+            "Trainer",
+            "Plant Site",
+            "Employees Attended",
+            "Training Hours / Employee",
+            "Total Training Hours",
+            "Training Cost (Rs.)",
+        ]
+
+        st.dataframe(
+            programme_details,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Programme": st.column_config.TextColumn(
+                    "Programme",
+                    width="large",
+                ),
+                "From Date": st.column_config.TextColumn(
+                    "From Date",
+                    width="small",
+                ),
+                "To Date": st.column_config.TextColumn(
+                    "To Date",
+                    width="small",
+                ),
+                "Quarter": st.column_config.TextColumn(
+                    "Quarter",
+                    width="small",
+                ),
+                "Training Type": st.column_config.TextColumn(
+                    "Training Type",
+                    width="medium",
+                ),
+                "Category": st.column_config.TextColumn(
+                    "Category",
+                    width="medium",
+                ),
+                "Trainer": st.column_config.TextColumn(
+                    "Trainer",
+                    width="medium",
+                ),
+                "Plant Site": st.column_config.TextColumn(
+                    "Plant Site",
+                    width="small",
+                ),
+                "Employees Attended": st.column_config.NumberColumn(
+                    "Employees Attended",
+                    format="%d",
+                    width="small",
+                ),
+                "Training Hours / Employee": st.column_config.NumberColumn(
+                    "Training Hours / Employee",
+                    format="%.1f",
+                    width="medium",
+                ),
+                "Total Training Hours": st.column_config.NumberColumn(
+                    "Total Training Hours",
+                    format="%.1f",
+                    width="medium",
+                ),
+                "Training Cost (Rs.)": st.column_config.NumberColumn(
+                    "Training Cost (Rs.)",
+                    format="Rs. %d",
+                    width="medium",
+                ),
+            },
+        )
+
+        st.write("")
+
         # When a participant is searched, the charts below use only that
         # participant's matched records. Participant actual cost is allocated
         # per training record as Training Cost / Employees Attended.

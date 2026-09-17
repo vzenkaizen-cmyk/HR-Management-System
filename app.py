@@ -4435,7 +4435,7 @@ def render_dashboard():
                 f"Remaining: Rs. {selected_variance:,.0f}"
             )
         
-        st.subheader(f"⏱️ Total Training Hours ({financial_year_label})")
+        st.subheader(f"⏱️ Allocation of Total Training Hours ({financial_year_label})")
         th1, th2 = st.columns([2.25, 2.75], gap="large")
 
         with th1:

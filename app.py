@@ -4330,7 +4330,7 @@ def render_dashboard():
         # The previous edit left the display references in place but did
         # not define the variables, which caused the NameError shown in
         # Streamlit.
-        selected_training_hours = float(total_hours)
+        selected_training_hours = float(filtered["calculated_total_hours"].sum())
 
         # Total Training Hours KPI:
         # Numerator = total training hours for the selected financial year
@@ -4435,7 +4435,7 @@ def render_dashboard():
                 f"Remaining: Rs. {selected_variance:,.0f}"
             )
         
-        st.subheader(f"⏱️ Allocation of Allocation of Total Training Hours ({financial_year_label})")
+        st.subheader(f"⏱️ Allocation of Total Training Hours ({financial_year_label})")
         th1, th2 = st.columns([2.25, 2.75], gap="large")
 
         with th1:

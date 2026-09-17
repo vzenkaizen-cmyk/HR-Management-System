@@ -4339,10 +4339,11 @@ def render_dashboard():
         #
         # When "All Years" is selected, numerator and denominator are both
         # the all-years total, so the KPI correctly shows 100%.
-        selected_training_hours = float(financial_year_total_hours)
-        filtered_training_hours_total = float(
-            df["calculated_total_hours"].sum()
-        )
+        # Numerator = training hours under the current active filters
+        # (for example, selected Training Type / Quarter / Month / Participant).
+        # Denominator = complete training hours for the selected financial year,
+        # independent of those narrower filters.
+        filtered_training_hours_total = float(financial_year_total_hours)
 
         training_hours_utilization = (
             (selected_training_hours / filtered_training_hours_total) * 100

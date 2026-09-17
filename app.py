@@ -4351,7 +4351,7 @@ def render_dashboard():
         # ------------------------------------------------------------
         # Fixed employee counts requested for the respective financial years.
         employee_count_by_year = {
-            2026: 237,
+            2026: 337,
             2025: 274,
             2024: 271,
         }

@@ -4427,44 +4427,172 @@ def render_dashboard():
             else 0
         )
 
-        # Total employee counts for each respective financial year.
+        # ------------------------------------------------------------
+        # THREE-YEAR TRAINING SUMMARY
+        # ------------------------------------------------------------
         annual_employee_counts = {
             2026: 237,
             2025: 274,
             2024: 271,
         }
 
+        summary_years = [2026, 2025, 2024]
+
+        # Three-year budget totals, respecting Location and Category filters.
+        three_year_budget_df = budget_df.copy()
+
+        if selected_location != "All Locations":
+            three_year_budget_df = three_year_budget_df[
+                three_year_budget_df["location"].astype(str).str.strip()
+                == selected_location
+            ].copy()
+
+        if selected_category != "All Categories":
+            three_year_budget_df = three_year_budget_df[
+                three_year_budget_df["category"] == selected_category
+            ].copy()
+
+        three_year_budget_df = three_year_budget_df[
+            three_year_budget_df["budget_year"].isin(summary_years)
+        ].copy()
+
+        annual_budget = {
+            year: float(
+                three_year_budget_df.loc[
+                    three_year_budget_df["budget_year"] == year,
+                    "budget_amount",
+                ].sum()
+            )
+            for year in summary_years
+        }
+
+        total_three_year_budget = sum(annual_budget.values())
+
+        # Three-year training-hour totals, respecting Location and Category.
+        three_year_hours_df = df.copy()
+        three_year_hours_df["training_year"] = (
+            three_year_hours_df["from_date"].dt.year
+        )
+
+        if selected_location != "All Locations":
+            three_year_hours_df = three_year_hours_df[
+                three_year_hours_df["power_plant"].astype(str).str.strip()
+                == selected_location
+            ].copy()
+
+        if selected_category != "All Categories":
+            three_year_hours_df = three_year_hours_df[
+                three_year_hours_df["category"] == selected_category
+            ].copy()
+
+        three_year_hours_df = three_year_hours_df[
+            three_year_hours_df["training_year"].isin(summary_years)
+        ].copy()
+
+        annual_training_hours = {
+            year: float(
+                three_year_hours_df.loc[
+                    three_year_hours_df["training_year"] == year,
+                    "calculated_total_hours",
+                ].sum()
+            )
+            for year in summary_years
+        }
+
+        total_three_year_training_hours = sum(annual_training_hours.values())
+
+        # Percentage of each year from the three-year total.
+        annual_budget_percentage = {
+            year: (
+                annual_budget[year] / total_three_year_budget * 100
+                if total_three_year_budget > 0
+                else 0
+            )
+            for year in summary_years
+        }
+
+        annual_training_hours_percentage = {
+            year: (
+                annual_training_hours[year]
+                / total_three_year_training_hours
+                * 100
+                if total_three_year_training_hours > 0
+                else 0
+            )
+            for year in summary_years
+        }
+
+        # Requested per-head formula:
+        # Total Training Hours / Employee Count * 100
+        annual_training_hours_per_head = {
+            year: (
+                annual_training_hours[year]
+                / annual_employee_counts[year]
+                * 100
+                if annual_employee_counts.get(year, 0) > 0
+                else 0
+            )
+            for year in summary_years
+        }
+
+        st.subheader("📊 Three-Year Training Summary")
+        st.caption(
+            "Budget % and Training Hours % are calculated from the total "
+            "across 2024, 2025 and 2026. Training Hours per Employee uses "
+            "Total Training Hours ÷ Employee Count × 100."
+        )
+
+        for year in summary_years:
+            c1, c2, c3 = st.columns(3, gap="medium")
+
+            with c1:
+                st.metric(
+                    f"{year} Budget %",
+                    f"{annual_budget_percentage[year]:,.1f}%",
+                )
+                st.caption(
+                    f"Rs. {annual_budget[year]:,.0f} ÷ "
+                    f"Rs. {total_three_year_budget:,.0f} × 100"
+                )
+
+            with c2:
+                st.metric(
+                    f"{year} Training Hours %",
+                    f"{annual_training_hours_percentage[year]:,.1f}%",
+                )
+                st.caption(
+                    f"{annual_training_hours[year]:,.1f} ÷ "
+                    f"{total_three_year_training_hours:,.1f} × 100"
+                )
+
+            with c3:
+                st.metric(
+                    f"{year} Training Hours per Employee",
+                    f"{annual_training_hours_per_head[year]:,.1f}%",
+                )
+                st.caption(
+                    f"{annual_training_hours[year]:,.1f} ÷ "
+                    f"{annual_employee_counts[year]:,} × 100"
+                )
+
+        # Keep the existing selected-year variables available below.
         if selected_year != "All Years":
             per_head_year = int(selected_year)
             per_head_employee_count = annual_employee_counts.get(
                 per_head_year, 0
             )
-            per_head_total_hours = float(
-                filtered["calculated_total_hours"].sum()
+            per_head_total_hours = annual_training_hours.get(
+                per_head_year, 0.0
             )
-            training_hours_per_employee = (
-                per_head_total_hours / per_head_employee_count
-                if per_head_employee_count > 0
-                else 0
+            training_hours_per_employee = annual_training_hours_per_head.get(
+                per_head_year, 0.0
             )
             per_head_label = f"FY {per_head_year}"
         else:
-            # For All Years, use the sum of the supplied annual employee
-            # counts for the years actually present in the data.
-            data_years = set(
-                df["from_date"].dt.year.dropna().astype(int).tolist()
-            )
-            total_known_employee_count = sum(
-                count
-                for year, count in annual_employee_counts.items()
-                if year in data_years
-            )
-            per_head_total_hours = float(
-                df["calculated_total_hours"].sum()
-            )
-            per_head_employee_count = total_known_employee_count
+            per_head_employee_count = sum(annual_employee_counts.values())
+            per_head_total_hours = total_three_year_training_hours
             training_hours_per_employee = (
-                per_head_total_hours / per_head_employee_count
+                per_head_total_hours / per_head_employee_count * 100
                 if per_head_employee_count > 0
                 else 0
             )

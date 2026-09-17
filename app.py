@@ -4332,12 +4332,16 @@ def render_dashboard():
         # Streamlit.
         selected_training_hours = float(total_hours)
 
-        # Training-hour denominator follows the current dashboard filters
-        # (Financial Year / Type / Quarter / Category / Month / Site), but
-        # does not apply the participant search. This makes a selected
-        # participant's hours a percentage of the relevant period total.
+        # Total Training Hours KPI:
+        # Numerator = total training hours for the selected financial year
+        # under the selected site/category context.
+        # Denominator = total training hours across all financial years.
+        #
+        # When "All Years" is selected, numerator and denominator are both
+        # the all-years total, so the KPI correctly shows 100%.
+        selected_training_hours = float(financial_year_total_hours)
         filtered_training_hours_total = float(
-            filtered["calculated_total_hours"].sum()
+            df["calculated_total_hours"].sum()
         )
 
         training_hours_utilization = (
@@ -4358,7 +4362,7 @@ def render_dashboard():
 
         if selected_year != "All Years":
             selected_financial_year = int(selected_year)
-            per_head_total_hours = float(filtered_training_hours_total)
+            per_head_total_hours = float(financial_year_total_hours)
             per_head_employee_count = int(
                 employee_count_by_year.get(selected_financial_year, 0)
             )
@@ -4370,7 +4374,7 @@ def render_dashboard():
                 else 0
             )
         else:
-            per_head_total_hours = float(filtered_training_hours_total)
+            per_head_total_hours = float(financial_year_total_hours)
             per_head_employee_count = sum(employee_count_by_year.values())
             per_head_label = "All Financial Years"
 
